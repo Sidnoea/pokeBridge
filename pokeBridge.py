@@ -25,7 +25,8 @@ OT_LENGTH = 7
 ##255 FF 0:0 No gender
 
 class Pokemon:
-    '''An individual Pokemon. Takes three bytes objects.'''
+    '''An individual Pokemon. Takes three bytes objects from
+    Generation II.'''
     
     def __init__(self, data, OTdata, nameData):
         from random import randint
@@ -261,7 +262,7 @@ class Pokemon:
 
 class Box:
     '''A sequence of Pokemon that represents a box. Takes a
-    bytes object.'''
+    bytes object from Generation II.'''
 
     def __init__(self, data):
         PKMN_LENGTH = 32 #size of Pokemon in bytes
@@ -291,6 +292,114 @@ class Box:
     def __len__(self):
         return len(self.pokemon)
 
+    def newData(self):
+        '''Returns a bytes representation of the Box, ready for writing
+        to Generation III.'''
+
+        data = bytes()
+        for p in self.pokemon:
+            data += p.newData()
+        data += bytes(80*(30-len(self.pokemon))) #todo: magic number
+        return data
+
+class Sector:
+    '''A 4KB section of a Generation III save game. Takes an
+    integer ID and save index.'''
+
+    LENGTH = 4096 #final length in bytes
+    #lengths of checksum-validated regions in bytes
+    lengths = {0: 3884, 1: 3968, 2: 3968, 3: 3968, 4: 3848, 5: 3968, 6: 3968, 7: 3968, 8: 3968, 9: 3968, 10: 3968, 11: 3968, 12: 3968, 13: 2000}
+    validationCode = bytes([0x25, 0x20, 0x01, 0x08])
+
+    def __init__(self, ID, saveIndex):
+        self.ID = ID
+        self.maxLength = Sector.lengths[ID]
+        self.data = bytearray()
+        self.saveIndex = saveIndex
+
+    def makeChecksum(self):
+        '''Returns a proper checksum for the Sector.'''
+
+        checksum = 0
+        data = self.data
+        for i in range(0, self.maxLength, 4):
+            checksum += data[i] + (data[i+1] << 8) + (data[i+2] << 16) + (data[i+3] << 24)
+        checksum = (checksum % 2**16) + (checksum >> 16)
+        checksum = checksum % 2**16
+        return checksum
+
+    def overwrite(self, data, offset):
+        '''Overwrites the data at the given offset in the Sector
+        using the given bytes object, one byte at a time. Raises
+        FullSectorException if the data is too long.'''
+
+        pass
+
+    def read(self):
+        '''Returns a bytes object with all of the Sector's data.'''
+
+        data = bytes(self.data)
+        #padding
+        #todo: make this not a loop
+        while len(data) < 0xFF4:
+            data += bytes([0])
+            
+        data += bytes([self.ID, 0])
+        checksum = self.makeChecksum()
+        data += bytes([checksum % 256, checksum >> 8])
+        data += Sector.validationCode
+        save = self.saveIndex
+        data += bytes([save % 256, (save>>8) % 256, (save>>16) % 256, save>>24])
+        return data
+
+    def write(self, data):
+        '''Adds data from a bytes object to the Sector, one byte
+        at a time. Raises FullSectorException if there is no more
+        room in the Sector.'''
+
+        for i,byte in enumerate(data):
+            if len(self.data) >= self.maxLength:
+                raise FullSectorException("Data is too long", i)
+            self.data.append(byte)
+
+class SaveGame:
+    '''A set of 14 Sectors representing a save game. Takes
+    an integer save index and a list of integers representing
+    the order of the sectors by ID.'''
+
+    NUMBER_OF_SECTORS = 14
+    LENGTH = Sector.LENGTH * NUMBER_OF_SECTORS #length in bytes
+
+    def __init__(self, saveIndex, order):
+        self.saveIndex = saveIndex
+        self.sectors = [Sector(i, saveIndex) for i in order]
+
+    def getSectorByID(self, ID):
+        '''Returns the Sector with the given ID.'''
+
+        for sector in self.sectors:
+            if sector.ID == ID:
+                return sector
+
+    def read(self):
+        '''Returns a bytes object representation of the save game.'''
+
+        data = bytes()
+        for sector in self.sectors:
+            print('Reading Sector {}'.format(sector.ID))
+            data += sector.read()
+        return data
+
+#todo: get rid of this; bad implementation
+class FullSectorException(Exception):
+    '''Indicates that a Sector is full and cannot be written to.
+    Contains the index of the first byte value that was not
+    written.'''
+
+    def __init__(self, message, index):
+        super().__init__(message)
+        self.index = index
+
 def convertEVs(EVs):
     '''Takes a list of old EVs (stat exp) and returns a list of new EVs
     after converting and adjusting for EV sum limits.'''
@@ -316,15 +425,89 @@ def convertIVs(IVs):
     newIVs.append(IVs[4]*2 + bonus) #spAtk and spDef both based on special
     return newIVs
 
+def copyOldBox(boxNum, data, saveGame):
+    '''Takes an integer, a bytes object, and a SaveGame, and copies
+    box boxNum from a save game's data to a SaveGame.'''
+
+    #todo: magic numbers
+    bytesPerBox = 80*30
+    bytesPerSector = 3968
+    internalStart = (boxNum-1)*bytesPerBox + 4
+    sectorStart = internalStart % bytesPerSector
+    sectorID = int(internalStart / bytesPerSector) + 5
+
+    sectorDatas = [data[i*Sector.LENGTH:(i+1)*Sector.LENGTH] for i in range(SaveGame.NUMBER_OF_SECTORS)]
+    sectorIDs = [sector[0xFF4] for sector in sectorDatas]
+    sector1 = sectorDatas[sectorIDs.index(sectorID)][:bytesPerSector]
+    sector2 = sectorDatas[sectorIDs.index(sectorID + 1)][:bytesPerSector]
+    sectorData = sector1 + sector2
+    boxData = sectorData[sectorStart:sectorStart + bytesPerBox]
+    try:
+        saveGame.getSectorByID(sectorID).write(boxData)
+    except FullSectorException as e:
+        saveGame.getSectorByID(sectorID+1).write(boxData[e.index:])
+    #todo: this almost definitely needs work
+
+def copyOldSector(sectorID, data, saveGame):
+    '''Takes an integer, a bytes object, and a SaveGame, and copies
+    sector sectorID from a save game's data to a SaveGame.'''
+
+    #todo: make not bad
+    sectorDatas = [data[i*Sector.LENGTH:(i+1)*Sector.LENGTH] for i in range(SaveGame.NUMBER_OF_SECTORS)]
+    sectorIDs = [sector[0xFF4] for sector in sectorDatas]
+    sectorData = sectorDatas[sectorIDs.index(sectorID)]
+    try:
+        saveGame.getSectorByID(sectorID).write(sectorData)
+    except FullSectorException:
+        pass
+
+def findCurrentSave(data):
+    '''Takes a bytes object, returns a tuple containing which save
+    slot (1 or 2) is the current save game and the value of the save
+    index.'''
+
+    #todo: research what happens with brand-new save files
+    data1 = data[0xFFF:0xFFB:-1]
+    data2 = data[0xEFFF:0xEFFB:-1]
+    index1 = (data1[0] << 24) + (data1[1] << 16) + (data1[2] << 8) + data1[3]
+    index2 = (data2[0] << 24) + (data2[1] << 16) + (data2[2] << 8) + data2[3]
+    return (1, index1) if index1 > index2 else (2, index2)
+
+def findSectorOrder(data):
+    '''Takes a bytes object, returns the order of the save game's sectors.'''
+
+    order = []
+    for i in range(SaveGame.NUMBER_OF_SECTORS):
+        order.append(data[(i+1)*Sector.LENGTH - 12])
+    return order
+
+def insertBox(boxNum, box, saveGame):
+    '''Takes a Box and sets it as a SaveGame's boxNum-th box.'''
+
+    #todo: magic numbers
+    bytesPerBox = 80*30
+    bytesPerSector = 3968
+    internalStart = (boxNum-1)*bytesPerBox + 4
+    sectorStart = internalStart % bytesPerSector
+    sectorID = int(internalStart / bytesPerSector) + 5
+
+    boxData = box.newData()
+    try:
+        saveGame.getSectorByID(sectorID).write(boxData)
+    except FullSectorException as e:
+        saveGame.getSectorByID(sectorID+1).write(boxData[e.index:])
+    #todo: this probably needs work
+
 def oldNameTrans(data):
     '''Translates an old encoded name or OT. Takes a bytes object,
     returns a string.'''
 
     stop = 0x50
+    #todo: test PK and MN chars
     table = {128: 'A', 129: 'B', 130: 'C', 131: 'D', 132: 'E', 133: 'F', 134: 'G', 135: 'H', 136: 'I', 137: 'J', 138: 'K', 139: 'L', 140: 'M', 141: 'N', 142: 'O', 143: 'P', 144: 'Q', 145: 'R', 146: 'S', 147: 'T', 148: 'U', 149: 'V', 150: 'W', 151: 'X', 152: 'Y', 153: 'Z',
              154: '(', 155: ')', 156: ':', 157: ';', 158: '[', 159: ']',
              160: 'a', 161: 'b', 162: 'c', 163: 'd', 164: 'e', 165: 'f', 166: 'g', 167: 'h', 168: 'i', 169: 'j', 170: 'k', 171: 'l', 172: 'm', 173: 'n', 174: 'o', 175: 'p', 176: 'q', 177: 'r', 178: 's', 179: 't', 180: 'u', 181: 'v', 182: 'w', 183: 'x', 184: 'y', 185: 'z',
-             225: 'PK', 226: 'MN', 227: '-', 230: '?', 231: '!', 232: '.', 127: ' ', 241: '*', 243: '/', 244: ',',
+             225: '\\PK', 226: '\\MN', 227: '-', 230: '?', 231: '!', 232: '.', 127: ' ', 241: '*', 243: '/', 244: ',',
              246: '0', 247: '1', 248: '2', 249: '3', 250: '4', 251: '5', 252: '6', 253: '7', 254: '8', 255: '9'}
     word = ''
     for byte in data:
@@ -337,6 +520,7 @@ def newNameTrans(name, length):
     length if necessary.'''
 
     stop = 0xFF
+    #todo: test PK and MN chars
     table = {' ': 0, 'PK': 83, 'MN': 84, '(': 92, ')': 93,
              '0': 161, '1': 162, '2': 163, '3': 164, '4': 165, '5': 166, '6': 167, '7': 168, '8': 169, '9': 170,
              '!': 171, '?': 172, '.': 173, '-': 174, ',': 184, '*': 185, '/': 186,
@@ -344,24 +528,70 @@ def newNameTrans(name, length):
              'a': 213, 'b': 214, 'c': 215, 'd': 216, 'e': 217, 'f': 218, 'g': 219, 'h': 220, 'i': 221, 'j': 222, 'k': 223, 'l': 224, 'm': 225, 'n': 226, 'o': 227, 'p': 228, 'q': 229, 'r': 230, 's': 231, 't': 232, 'u': 233, 'v': 234, 'w': 235, 'x': 236, 'y': 237, 'z': 238,
              ':': 240}
     #note: ;, [, and ] are missing
-    data = [table[i] for i in name]
+    data = []
+    i = 0
+    while i < len(name):
+        if name[i] == '\\':
+            data.append(table[name[i+1:i+3]])
+            i += 3
+        else:
+            data.append(table[name[i]])
+            i += 1
     if len(data) < length:
         data += [stop for i in range(length - len(data))]
     #todo: pad with 0xFF and then 0x00 instead of just 0xFF
     return bytes(data)
 
 if __name__ == '__main__':
-    file = open('C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/Pokemon Crystal/Pokemon Crystal (U) [C][!].sav','br')
-    data = file.read()
-    file.close()
+    crystal = open('C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/Pokemon Crystal/Pokemon Crystal (U) [C][!].sav','br')
+    data = crystal.read()
+    crystal.close()
     box1 = Box(data[oldBoxStarts[0]:oldBoxStarts[0] + boxLen])
     box2 = Box(data[oldBoxStarts[1]:oldBoxStarts[1] + boxLen])
     box3 = Box(data[oldBoxStarts[2]:oldBoxStarts[2] + boxLen])
 
-    rat = box1[17]
-    rat.OTGender = 'male'
-    rat.language = 'English'
-    rat.game = 'Ruby'
-    rat.secretID = 12345
-    rat.personality = rat.newPersonalityValue()
-    newData = rat.newData()
+    for pkmn in box1:
+        pkmn.OTGender = 'male'
+        pkmn.language = 'English'
+        pkmn.game = 'Ruby'
+        pkmn.secretID = 12345
+        pkmn.personality = pkmn.newPersonalityValue()
+
+    ruby = open('C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/Pokemon Ruby/POKEBRIDGE TESTING/Pokemon Ruby.sav','br')
+    rubyData = ruby.read()
+    ruby.close()    
+
+    saveData1 = rubyData[:SaveGame.LENGTH]
+    saveData2 = rubyData[SaveGame.LENGTH:2*SaveGame.LENGTH]
+    saveData3 = rubyData[2*SaveGame.LENGTH:]
+    saveSlot = findCurrentSave(rubyData)
+    curSave = saveData1 if saveSlot[0] == 1 else saveData2
+    order = findSectorOrder(curSave)
+    game = SaveGame(saveSlot[1], order)
+
+    oldSectorDatas = [curSave[i*Sector.LENGTH:(i+1)*Sector.LENGTH] for i in range(SaveGame.NUMBER_OF_SECTORS)]
+    box1SectorData = oldSectorDatas[order.index(5)]
+    curBox = box1SectorData[0:4]
+    game.getSectorByID(5).write(curBox)
+    for i in range(1,4):
+        copyOldBox(i, curSave, game)
+    insertBox(4, box1, game)
+    for i in range(5,numBoxes+1):
+        copyOldBox(i, curSave, game)
+    for i in range(5):
+        copyOldSector(i, curSave, game)
+    lastData = oldSectorDatas[order.index(13)][0x744:0x7D0]
+    game.getSectorByID(13).write(lastData)
+
+    newData = game.read()
+
+    outfile = open('C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/Pokemon Ruby/POKEBRIDGE TESTING/Pokemon Ruby Test.sav','bw')
+    if saveSlot[0] == 1:
+        outfile.write(newData)
+        outfile.write(saveData2)
+        outfile.write(saveData3)
+    else:
+        outfile.write(saveData1)
+        outfile.write(newData)
+        outfile.write(saveData3)
+    outfile.close()
