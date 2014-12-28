@@ -1,6 +1,6 @@
-#todo: research if pokedex flags have to be set on data write
+#todo: set pokedex flags on transfer
 
-boxLen = 1102 #size of Box in bytes
+boxLen = 1102 #size of old Box in bytes
 numBoxes = 14
 oldBoxStarts = [0x4000, 0x4450, 0x48a0, 0x4cf0, 0x5140, 0x5590, 0x59e0, 0x6000, 0x6450, 0x68a0, 0x6cf0, 0x7140, 0x7590, 0x79e0]
 #todo: different offsets for different games?
@@ -87,6 +87,7 @@ class Pokemon:
         else:
             self.gender = 'male'
 
+        #todo: only give second ability if pokemon has 2 options (ugh)
         self.ability = randint(0,1)
 
         self.game = None
@@ -103,6 +104,7 @@ class Pokemon:
     def newPersonalityValue(self):
         '''Generates a personality value. If the Pokemon is
         shiny, a secret ID must be set.'''
+        #todo: ensure non-shiny pokemon don't become shiny
         from random import randint
         
         #gender byte
@@ -219,7 +221,7 @@ class Pokemon:
 
         #substructure M
         pokerus = makeBytes(self.pokerus, 1) #todo: validate this
-        placeMet = makeBytes(0, 1) #todo: put actual data here
+        placeMet = makeBytes(254, 1) #todo: put actual data here
 
         OTGender = 1 if self.OTGender == 'female' else 0
         ball = 4 #todo: let this be customizable?
@@ -228,8 +230,8 @@ class Pokemon:
         originRaw = (OTGender << 15) + (ball << 11) + (game << 7) + levelMet
         origin = makeBytes(originRaw, 2)
 
-        ability = self.ability
-        egg = 0 #don't transfer eggs, stupid
+        ability = self.ability #todo: ability determined by personality value?
+        egg = 0 #todo: egg handling
         IVs = [IV for IV in reversed(self.IVs)]
         genesRaw = (ability << 31) + (egg << 30) + (IVs[0] << 25) + (IVs[1] << 20) + (IVs[2] << 15) + (IVs[3] << 10) + (IVs[4] << 5) + IVs[5]
         genes = makeBytes(genesRaw, 4)
@@ -330,8 +332,9 @@ class Sector:
 
     def overwrite(self, data, offset):
         '''Overwrites the data at the given offset in the Sector
-        using the given bytes object, one byte at a time. Raises
-        FullSectorException if the data is too long.'''
+        using the given bytes object. If the data does not fit,
+        returns the index of the first unwritten byte; otherwise,
+        returns -1.'''
 
         pass
 
@@ -353,26 +356,77 @@ class Sector:
         return data
 
     def write(self, data):
-        '''Adds data from a bytes object to the Sector, one byte
-        at a time. Raises FullSectorException if there is no more
-        room in the Sector.'''
+        '''Adds data from a bytes object to the Sector. If not all of
+        the data fits in the Sector, returns the index of the first
+        unwritten byte; otherwise, returns -1.'''
 
         for i,byte in enumerate(data):
             if len(self.data) >= self.maxLength:
-                raise FullSectorException("Data is too long", i)
+                return i
             self.data.append(byte)
+        return -1
 
 class SaveGame:
     '''A set of 14 Sectors representing a save game. Takes
-    an integer save index and a list of integers representing
-    the order of the sectors by ID.'''
+    a bytes object as its old data.'''
 
     NUMBER_OF_SECTORS = 14
     LENGTH = Sector.LENGTH * NUMBER_OF_SECTORS #length in bytes
 
-    def __init__(self, saveIndex, order):
-        self.saveIndex = saveIndex
-        self.sectors = [Sector(i, saveIndex) for i in order]
+    def __init__(self, data):
+        secLen = Sector.LENGTH
+        numSecs = SaveGame.NUMBER_OF_SECTORS
+        
+        order = [data[i*secLen + 0xFF4] for i in range(numSecs)]
+        oldData = [data[i*secLen:(i+1)*secLen] for i in range(numSecs)]
+        self.oldData = {ID:data for ID,data in zip(order, oldData)}
+        self.saveIndex = findSaveIndex(data)
+        self.sectors = [Sector(i, self.saveIndex) for i in order]
+
+    def closeBoxes(self):
+        '''Adds the last bits of Box data. For use after all boxes
+        have been inserted or copied.'''
+
+        self.getSectorByID(13).write(self.oldData[13][0x744:0x7D0])
+
+    def copyOldBox(self, boxNum):
+        '''Takes an integer and copies box boxNum from a SaveGame's
+        old data to its new data.'''
+
+        #todo: magic numbers
+        bytesPerBox = 80*30
+        bytesPerSector = 3968
+
+        sectorID, sectorStart = SaveGame.getBoxOffset(boxNum)
+        sector1 = self.oldData[sectorID][:bytesPerSector]
+        sector2 = self.oldData[sectorID+1][:bytesPerSector]
+        sectorData = sector1 + sector2
+        boxData = sectorData[sectorStart:sectorStart + bytesPerBox]
+        i = self.getSectorByID(sectorID).write(boxData)
+        if i != -1:
+            self.getSectorByID(sectorID+1).write(boxData[i:])
+
+    def copyOldSector(self, sectorID):
+        '''Takes an integer sector ID and copies the SaveGame's
+        old sector into its new one. Only recommended for sectors
+        that don't contain box data.'''
+
+        sectorData = self.oldData[sectorID]
+        self.getSectorByID(sectorID).write(sectorData)
+
+    @staticmethod
+    def getBoxOffset(boxNum):
+        '''Takes an integer box number, returns a tuple containing
+        the sector ID and sector offset of where to start writing
+        data for the beginning of box boxNum.'''
+
+        #todo: magic numbers?
+        bytesPerBox = 80*30
+        bytesPerSector = 3968
+        internalStart = (boxNum-1)*bytesPerBox + 4
+        sectorStart = internalStart % bytesPerSector
+        sectorID = int(internalStart / bytesPerSector) + 5
+        return sectorID, sectorStart
 
     def getSectorByID(self, ID):
         '''Returns the Sector with the given ID.'''
@@ -381,25 +435,86 @@ class SaveGame:
             if sector.ID == ID:
                 return sector
 
+    def insertBox(self, box, boxNum):
+        '''Takes a Box and sets it as a SaveGame's boxNum-th box. Make
+        sure all previous boxes have been set first.'''
+
+        sectorID = SaveGame.getBoxOffset(boxNum)[0]
+        boxData = box.newData()
+        i = self.getSectorByID(sectorID).write(boxData)
+        if i != -1:
+            self.getSectorByID(sectorID+1).write(boxData[i:])
+
     def read(self):
-        '''Returns a bytes object representation of the save game.'''
+        '''Returns a bytes object representation of the save game.
+        Make sure all sectors have been set first.'''
 
         data = bytes()
         for sector in self.sectors:
-            print('Reading Sector {}'.format(sector.ID))
             data += sector.read()
         return data
 
-#todo: get rid of this; bad implementation
-class FullSectorException(Exception):
-    '''Indicates that a Sector is full and cannot be written to.
-    Contains the index of the first byte value that was not
-    written.'''
+    def setUpBoxes(self):
+        '''Preps the Save Game for use of insertBox and copyOldBox.'''
 
-    def __init__(self, message, index):
-        super().__init__(message)
-        self.index = index
+        self.getSectorByID(5).write(self.oldData[5][0:4])
 
+class NewSaveFile:
+    '''Contains the entirety of a Generation III save file. Takes an
+    input filename and an output filename.'''
+
+    def __init__(self, inputName, outputName):
+        self.outputName = outputName
+        self.boxes = [None for i in range(14)] #todo: magic number?
+        
+        inFile = open(inputName, 'br')
+        inData = inFile.read()
+        inFile.close()
+
+        saveData1 = inData[:SaveGame.LENGTH]
+        saveData2 = inData[SaveGame.LENGTH:2*SaveGame.LENGTH]
+        self.miscData = inData[2*SaveGame.LENGTH:]
+        
+        self.curSaveSlot = findCurrentSave(inData)
+        if self.curSaveSlot == 1:
+            self.curSave = SaveGame(saveData1)
+            self.oldSaveData = saveData2
+        else:
+            self.curSave = SaveGame(saveData2)
+            self.oldSaveData = saveData1
+            
+    def addBox(self, box, boxNum):
+        '''Takes a Box and an integer box number, queues the Box for
+        writing to the save game.'''
+
+        self.boxes[boxNum-1] = box
+
+    def save(self):
+        '''Writes all of the data to the output file.'''
+
+        for i in range(5): #todo: magic number?
+            self.curSave.copyOldSector(i)
+        self.curSave.setUpBoxes()
+        for i,box in enumerate(self.boxes):
+            if box == None:
+                self.curSave.copyOldBox(i+1)
+            else:
+                self.curSave.insertBox(box, i+1)
+        self.curSave.closeBoxes()
+
+        newSaveData = self.curSave.read()
+
+        outFile = open(self.outputName, 'bw')
+        if self.curSaveSlot == 1:
+            outFile.write(newSaveData)
+            outFile.write(self.oldSaveData)
+        else:
+            outFile.write(self.oldSaveData)
+            outFile.write(newSaveData)
+        outFile.write(self.miscData)
+        outFile.close()
+        
+                
 def convertEVs(EVs):
     '''Takes a list of old EVs (stat exp) and returns a list of new EVs
     after converting and adjusting for EV sum limits.'''
@@ -424,79 +539,24 @@ def convertIVs(IVs):
     bonus = randint(0,1)
     newIVs.append(IVs[4]*2 + bonus) #spAtk and spDef both based on special
     return newIVs
-
-def copyOldBox(boxNum, data, saveGame):
-    '''Takes an integer, a bytes object, and a SaveGame, and copies
-    box boxNum from a save game's data to a SaveGame.'''
-
-    #todo: magic numbers
-    bytesPerBox = 80*30
-    bytesPerSector = 3968
-    internalStart = (boxNum-1)*bytesPerBox + 4
-    sectorStart = internalStart % bytesPerSector
-    sectorID = int(internalStart / bytesPerSector) + 5
-
-    sectorDatas = [data[i*Sector.LENGTH:(i+1)*Sector.LENGTH] for i in range(SaveGame.NUMBER_OF_SECTORS)]
-    sectorIDs = [sector[0xFF4] for sector in sectorDatas]
-    sector1 = sectorDatas[sectorIDs.index(sectorID)][:bytesPerSector]
-    sector2 = sectorDatas[sectorIDs.index(sectorID + 1)][:bytesPerSector]
-    sectorData = sector1 + sector2
-    boxData = sectorData[sectorStart:sectorStart + bytesPerBox]
-    try:
-        saveGame.getSectorByID(sectorID).write(boxData)
-    except FullSectorException as e:
-        saveGame.getSectorByID(sectorID+1).write(boxData[e.index:])
-    #todo: this almost definitely needs work
-
-def copyOldSector(sectorID, data, saveGame):
-    '''Takes an integer, a bytes object, and a SaveGame, and copies
-    sector sectorID from a save game's data to a SaveGame.'''
-
-    #todo: make not bad
-    sectorDatas = [data[i*Sector.LENGTH:(i+1)*Sector.LENGTH] for i in range(SaveGame.NUMBER_OF_SECTORS)]
-    sectorIDs = [sector[0xFF4] for sector in sectorDatas]
-    sectorData = sectorDatas[sectorIDs.index(sectorID)]
-    try:
-        saveGame.getSectorByID(sectorID).write(sectorData)
-    except FullSectorException:
-        pass
-
+    
 def findCurrentSave(data):
-    '''Takes a bytes object, returns a tuple containing which save
-    slot (1 or 2) is the current save game and the value of the save
-    index.'''
+    '''Takes a bytes object, returns which save game is the current
+    game (1 or 2).'''
 
     #todo: research what happens with brand-new save files
-    data1 = data[0xFFF:0xFFB:-1]
-    data2 = data[0xEFFF:0xEFFB:-1]
-    index1 = (data1[0] << 24) + (data1[1] << 16) + (data1[2] << 8) + data1[3]
-    index2 = (data2[0] << 24) + (data2[1] << 16) + (data2[2] << 8) + data2[3]
-    return (1, index1) if index1 > index2 else (2, index2)
+    data1 = data[0xFFC:0x1000]
+    data2 = data[0xEFFC:0xF000]
+    index1 = data1[0] + (data1[1] << 8) + (data1[2] << 16) + (data1[3] << 24)
+    index2 = data2[0] + (data2[1] << 8) + (data2[2] << 16) + (data2[3] << 24)
+    return 1 if index1 > index2 else 2
 
-def findSectorOrder(data):
-    '''Takes a bytes object, returns the order of the save game's sectors.'''
+def findSaveIndex(data):
+    '''Takes a bytes object, returns the save game's save index. Can
+    take save game data or sector data.'''
 
-    order = []
-    for i in range(SaveGame.NUMBER_OF_SECTORS):
-        order.append(data[(i+1)*Sector.LENGTH - 12])
-    return order
-
-def insertBox(boxNum, box, saveGame):
-    '''Takes a Box and sets it as a SaveGame's boxNum-th box.'''
-
-    #todo: magic numbers
-    bytesPerBox = 80*30
-    bytesPerSector = 3968
-    internalStart = (boxNum-1)*bytesPerBox + 4
-    sectorStart = internalStart % bytesPerSector
-    sectorID = int(internalStart / bytesPerSector) + 5
-
-    boxData = box.newData()
-    try:
-        saveGame.getSectorByID(sectorID).write(boxData)
-    except FullSectorException as e:
-        saveGame.getSectorByID(sectorID+1).write(boxData[e.index:])
-    #todo: this probably needs work
+    data = data[0xFFC:0x1000]
+    return data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24)
 
 def oldNameTrans(data):
     '''Translates an old encoded name or OT. Takes a bytes object,
@@ -546,6 +606,7 @@ if __name__ == '__main__':
     crystal = open('C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/Pokemon Crystal/Pokemon Crystal (U) [C][!].sav','br')
     data = crystal.read()
     crystal.close()
+    
     box1 = Box(data[oldBoxStarts[0]:oldBoxStarts[0] + boxLen])
     box2 = Box(data[oldBoxStarts[1]:oldBoxStarts[1] + boxLen])
     box3 = Box(data[oldBoxStarts[2]:oldBoxStarts[2] + boxLen])
@@ -557,41 +618,13 @@ if __name__ == '__main__':
         pkmn.secretID = 12345
         pkmn.personality = pkmn.newPersonalityValue()
 
-    ruby = open('C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/Pokemon Ruby/POKEBRIDGE TESTING/Pokemon Ruby.sav','br')
-    rubyData = ruby.read()
-    ruby.close()    
+    print(box1[12].ability)
+    print(box1[12].personality%2)
+    print(box1[13].ability)
+    print(box1[13].personality%2)
 
-    saveData1 = rubyData[:SaveGame.LENGTH]
-    saveData2 = rubyData[SaveGame.LENGTH:2*SaveGame.LENGTH]
-    saveData3 = rubyData[2*SaveGame.LENGTH:]
-    saveSlot = findCurrentSave(rubyData)
-    curSave = saveData1 if saveSlot[0] == 1 else saveData2
-    order = findSectorOrder(curSave)
-    game = SaveGame(saveSlot[1], order)
-
-    oldSectorDatas = [curSave[i*Sector.LENGTH:(i+1)*Sector.LENGTH] for i in range(SaveGame.NUMBER_OF_SECTORS)]
-    box1SectorData = oldSectorDatas[order.index(5)]
-    curBox = box1SectorData[0:4]
-    game.getSectorByID(5).write(curBox)
-    for i in range(1,4):
-        copyOldBox(i, curSave, game)
-    insertBox(4, box1, game)
-    for i in range(5,numBoxes+1):
-        copyOldBox(i, curSave, game)
-    for i in range(5):
-        copyOldSector(i, curSave, game)
-    lastData = oldSectorDatas[order.index(13)][0x744:0x7D0]
-    game.getSectorByID(13).write(lastData)
-
-    newData = game.read()
-
-    outfile = open('C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/Pokemon Ruby/POKEBRIDGE TESTING/Pokemon Ruby Test.sav','bw')
-    if saveSlot[0] == 1:
-        outfile.write(newData)
-        outfile.write(saveData2)
-        outfile.write(saveData3)
-    else:
-        outfile.write(saveData1)
-        outfile.write(newData)
-        outfile.write(saveData3)
-    outfile.close()
+    inputName = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Ruby.sav'
+    outputName = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Ruby Test.sav'
+    game = NewSaveFile(inputName, outputName)
+    game.addBox(box1, 4)
+    game.save()
