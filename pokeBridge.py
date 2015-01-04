@@ -32,10 +32,10 @@ class Pokemon:
         def convertEVs(EVs):
             '''Takes a list of old EVs (stat exp) and returns a list of new EVs
             after converting and adjusting for EV sum limits.'''
+            from math import sqrt
 
             #convert
-            #todo: change this conversion factor?
-            EVs = [EV >> 8 for EV in EVs + [EVs[4]]] #spAtk == spDef == special
+            EVs = [int(sqrt(EV)) for EV in EVs + [EVs[4]]] #spAtk == spDef == special
             #legalize
             while sum(EVs) > 510:
                 for i,EV in enumerate(EVs):
@@ -54,14 +54,14 @@ class Pokemon:
         self.species = data[0x0]
         self.item = data[0x1] #todo: convert item IDs
         self.moves = [move for move in data[0x2:0x6]]
-        self.OTID = (data[0x6] << 8) + data[0x7]
-        self.exp = (data[0x8] << 16) + (data[0x9] << 8) + data[0xa]
+        self.OTID = int.from_bytes(data[0x6:0x8], 'big')
+        self.exp = int.from_bytes(data[0x8:0xb], 'big')
         
-        self.oldHPEV = (data[0xb] << 8) + data[0xc]
-        self.oldAttackEV = (data[0xd] << 8) + data[0xe]
-        self.oldDefenseEV = (data[0xf] << 8) + data[0x10]
-        self.oldSpeedEV = (data[0x11] << 8) + data[0x12]
-        self.oldSpecialEV = (data[0x13] << 8) + data[0x14]
+        self.oldHPEV = int.from_bytes(data[0xb:0xd], 'big')
+        self.oldAttackEV = int.from_bytes(data[0xd:0xf], 'big')
+        self.oldDefenseEV = int.from_bytes(data[0xf:0x11], 'big')
+        self.oldSpeedEV = int.from_bytes(data[0x11:0x13], 'big')
+        self.oldSpecialEV = int.from_bytes(data[0x13:0x15], 'big')
         self.EVs = convertEVs([self.oldHPEV,
                                self.oldAttackEV,
                                self.oldDefenseEV,
@@ -90,7 +90,7 @@ class Pokemon:
         self.PPvals = [PP & 0b00111111 for PP in PPs]
         
         self.happiness = data[0x1b]
-        self.pokerus = data[0x1c] #todo: get data out of this
+        self.pokerus = data[0x1c] #todo: does this need to be converted?
         self.caught = data[0x1d:0x1f] #todo: get data out of this?
         self.level = data[0x1f]
 
@@ -131,8 +131,6 @@ class Pokemon:
         self.personality = None
         self.secretID = None
 
-        #todo: Unown letter
-
     def __str__(self):
         return "{} (Level {} {})".format(self.name, self.level, self.speciesName)
 
@@ -149,8 +147,8 @@ class Pokemon:
             self.ability = 0
 
     def setPersonality(self):
-        '''Sets a personality value for the Pokemon. A secret ID
-        must be set first.'''
+        '''Sets a personality value for the Pokemon. A secret ID must be
+        set first.'''
         #todo: ensure non-shiny pokemon don't become shiny
         from random import randint
         
@@ -185,8 +183,7 @@ class Pokemon:
 
         if self.species == 201: #Unown
             uNumber = ord(self.letter) - ord('a') #a = 0, b = 1...
-            for i in range(uNumber, 256, 28): #26 letters + 2 punctuation
-                #print('uNumber = {}'.format(i))
+            for i in range(uNumber, 2**8, 28): #26 letters + 2 punctuation
                 u1 = (i & 0b11000000) >> 6
                 u2 = (i & 0b00110000) >> 4
                 u3 = (i & 0b00001100) >> 2
@@ -200,6 +197,7 @@ class Pokemon:
                         break
                 else:
                     break
+            #temp
             else:
                 raise Exception('Could not give a proper PV to ' + str(self))
             p1, p2 = newp1, newp2
@@ -231,19 +229,11 @@ class Pokemon:
             '''Returns an encrypted substructure (bytes object)
             using the proper 4-byte key value.'''
             
-            key = makeBytes(key, 4)
+            key = key.to_bytes(4, 'little')
             encrypted = []
-            for i in range(12):
-                encrypted.append(sub[i] ^ (key[i%4]))
+            for i,byte in enumerate(sub):
+                encrypted.append(byte ^ key[i%4])
             return bytes(encrypted)
-
-        def makeBytes(data, size):
-            '''Takes an integer, returns a little-endian bytes
-            representation of the data with the given size in
-            number of bytes.'''
-            
-            datastr = ('{:0>'+str(size*2)+'x}').format(data) #size hex bytes
-            return (bytes.fromhex(datastr))[::-1]
 
         def makeChecksum(substructures):
             '''Takes a list of 4 substructures and returns the
@@ -251,73 +241,74 @@ class Pokemon:
 
             total = 0
             for sub in substructures:
-                for i in range(0, 12, 2):
-                    total += sub[i] + (sub[i+1] << 8)
+                for i in range(0, len(sub), 2):
+                    total += int.from_bytes(sub[i:i+2], 'little')
             return total % (2**16)
 
         #create bytes for each field
-        personality = makeBytes(self.personality, 4)
-        OTID = makeBytes(self.OTID, 2)
-        secretID = makeBytes(self.secretID, 2)
+        personality = self.personality.to_bytes(4, 'little')
+        OTID = self.OTID.to_bytes(2, 'little')
+        secretID = self.secretID.to_bytes(2, 'little')
         name = newNameTrans(self.name, self.NEW_NAME_LENGTH)
-        language = makeBytes(languages[self.language], 2)
+        language = languages[self.language].to_bytes(2, 'little')
         OT = newNameTrans(self.OT, self.NEW_OT_LENGTH)
-        markings = makeBytes(0, 1)
+        markings = bytes(1) #no markings
         #checksum goes here
-        padding = makeBytes(0, 2)
+        padding = bytes(2)
 
         #all substructures are created in little-endian order,
         #i.e. they're all created for direct writing (after
         #encryption that is)
 
         #substructure G
-        species = makeBytes(self.species, 2)
-        item = makeBytes(self.item, 2) #todo: translate item
-        exp = makeBytes(self.exp, 4)
+        species = self.species.to_bytes(2, 'little')
+        item = self.item.to_bytes(2, 'little')
+        exp = self.exp.to_bytes(4, 'little')
         #todo: make sure PPups are in the right order
         PPupsRaw = self.PPups[0] + (self.PPups[1] << 2) + (self.PPups[2] << 4) + (self.PPups[3] << 6)
-        PPups = makeBytes(PPupsRaw, 1)
-        happiness = makeBytes(self.happiness, 1)
-        unknown = makeBytes(0, 2) #it's a mystery
+        PPups = PPupsRaw.to_bytes(1, 'little')
+        happiness = self.happiness.to_bytes(1, 'little')
+        unknown = bytes(2) #it's a mystery
         
         subG = species + item + exp + PPups + happiness + unknown
 
         #substructure A
-        moves = [makeBytes(move, 2) for move in self.moves]
-        PPvals = [makeBytes(PPval, 1) for PPval in self.PPvals]
+        moves = [move.to_bytes(2, 'little') for move in self.moves]
+        PPvals = [PPval.to_bytes(1, 'little') for PPval in self.PPvals]
         
         subA = moves[0] + moves[1] + moves[2] + moves[3] + PPvals[0] + PPvals[1] + PPvals[2] + PPvals[3]
 
         #substructure E
-        HPEV, attackEV, defenseEV, speedEV, spAtkEV, spDefEV = [makeBytes(EV, 1) for EV in self.EVs]
-        condition = makeBytes(0, 6)
+        EVs = [EV.to_bytes(1, 'little') for EV in self.EVs]
+        HPEV, attackEV, defenseEV, speedEV, spAtkEV, spDefEV = EVs
+        condition = bytes(6) #no condition
         
         subE = HPEV + attackEV + defenseEV + speedEV + spAtkEV + spDefEV + condition
 
         #substructure M
-        pokerus = makeBytes(self.pokerus, 1) #todo: validate this
-        placeMet = makeBytes(254, 1) #todo: put actual data here
+        pokerus = self.pokerus.to_bytes(1, 'little') #todo: validate this
+        placeMet = int.to_bytes(254, 1, 'little') #todo: put actual data here
 
         OTGender = 1 if self.OTGender == 'female' else 0
         ball = 4 #todo: let this be customizable?
         game = games[self.game]
         levelMet = self.level #todo: make this the old met level?
         originRaw = (OTGender << 15) + (ball << 11) + (game << 7) + levelMet
-        origin = makeBytes(originRaw, 2)
+        origin = originRaw.to_bytes(2, 'little')
 
         ability = self.ability
         egg = 0 #todo: egg handling
         IVs = [IV for IV in reversed(self.IVs)]
         genesRaw = (ability << 31) + (egg << 30) + (IVs[0] << 25) + (IVs[1] << 20) + (IVs[2] << 15) + (IVs[3] << 10) + (IVs[4] << 5) + IVs[5]
-        genes = makeBytes(genesRaw, 4)
+        genes = genesRaw.to_bytes(4, 'little')
 
-        ribbons = makeBytes(0, 4)
+        ribbons = bytes(4) #no ribbons
 
         subM = pokerus + placeMet + origin + genes + ribbons
         
         #calculate checksum
         checksumRaw = makeChecksum([subG, subA, subE, subM])
-        checksum = makeBytes(checksumRaw, 2)
+        checksum = checksumRaw.to_bytes(2, 'little')
         
         #encrypt substructures
         key = self.personality ^ ((self.secretID << 16) + self.OTID)
@@ -427,12 +418,10 @@ class Sector:
         '''Returns a proper checksum for the Sector.'''
 
         checksum = 0
-        data = self.data
         for i in range(0, self.maxLength, 4):
-            checksum += data[i] + (data[i+1] << 8) + (data[i+2] << 16) + (data[i+3] << 24)
-        checksum = (checksum % 2**16) + (checksum >> 16)
-        checksum = checksum % 2**16
-        return checksum
+            checksum += int.from_bytes(self.data[i:i+4], 'little')
+        checksum = (checksum % 2**16) + (checksum >> 16) #lower half + upper half
+        return checksum % 2**16
 
     def read(self):
         '''Returns a bytes object with all of the Sector's data.'''
@@ -440,12 +429,11 @@ class Sector:
         data = self.data
         #adding the footer data
         data += bytes(0xFF4 - len(data)) #padding
-        data += bytes([self.ID, 0])
+        data += self.ID.to_bytes(2, 'little')
         checksum = self.makeChecksum()
-        data += bytes([checksum % 256, checksum >> 8])
+        data += checksum.to_bytes(2, 'little')
         data += bytes([0x25, 0x20, 0x01, 0x08]) #validation code
-        save = self.saveIndex
-        data += bytes([save % 256, (save>>8) % 256, (save>>16) % 256, save>>24])
+        data += self.saveIndex.to_bytes(4, 'little')
         return data
 
     def write(self, data):
@@ -553,21 +541,25 @@ class SaveGame:
         self.getSectorByID(5).write(self.oldData[5][0:4])
 
 class NewSaveFile:
-    '''Contains the entirety of a Generation III save file. Takes an
-    input file name.'''
+    '''Contains the entirety of a Generation III save file. Takes a
+    string input file name.'''
 
     def __init__(self, filename):
         self.boxes = [None for i in range(SaveGame.NUMBER_OF_BOXES)]
         
-        inFile = open(filename, 'br')
-        inData = inFile.read()
-        inFile.close()
+        file = open(filename, 'br')
+        data = file.read()
+        file.close()
 
-        saveData1 = inData[:SaveGame.LENGTH]
-        saveData2 = inData[SaveGame.LENGTH:2*SaveGame.LENGTH]
-        self.miscData = inData[2*SaveGame.LENGTH:]
+        saveLen = SaveGame.LENGTH
+        saveData1 = data[:saveLen]
+        saveData2 = data[saveLen:2*saveLen]
+        self.miscData = data[2*saveLen:]
         
-        self.curSaveSlot = findCurrentSave(inData)
+        index1 = findSaveIndex(saveData1)
+        index2 = findSaveIndex(saveData2)
+        self.curSaveSlot = 1 if index1 > index2 else 2
+        
         if self.curSaveSlot == 1:
             self.curSave = SaveGame(saveData1)
             self.oldSaveData = saveData2
@@ -608,8 +600,8 @@ class NewSaveFile:
         outFile.close()
 
 class OldSaveFile:
-    '''Contains the entirety of a Generation II save file. Takes an
-    input file name.'''
+    '''Contains the entirety of a Generation II save file. Takes a
+    string input file name.'''
 
     NUMBER_OF_BOXES = 14
 
@@ -654,28 +646,17 @@ class OldSaveFile:
 
         #copy everything that isn't the boxes
         #zero out marked boxes
-        #recalculate checksum
+        #todo: what to do with the current box?
+        #recalculate checksum?
         #write file
 
         pass
-    
-def findCurrentSave(data):
-    '''Takes a bytes object, returns which save game is the current
-    game (1 or 2).'''
-
-    #todo: research what happens with brand-new save files
-    data1 = data[0xFFC:0x1000]
-    data2 = data[0xEFFC:0xF000]
-    index1 = data1[0] + (data1[1] << 8) + (data1[2] << 16) + (data1[3] << 24)
-    index2 = data2[0] + (data2[1] << 8) + (data2[2] << 16) + (data2[3] << 24)
-    return 1 if index1 > index2 else 2
 
 def findSaveIndex(data):
     '''Takes a bytes object, returns the save game's save index. Can
     take save game data or sector data.'''
 
-    data = data[0xFFC:0x1000]
-    return data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24)
+    return int.from_bytes(data[0xFFC:0x1000], 'little')
 
 def oldNameTrans(data):
     '''Translates an old encoded name or OT. Takes a bytes object,
