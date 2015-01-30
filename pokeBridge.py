@@ -9,6 +9,7 @@ of the work needed; everything else is for internal use.
 #todo: Test a bunch of Unown and shiny Unown
 #todo: Documentation (usage, conversion factors, etc.)
 #todo: GUI
+#todo: Allow or disallow renaming of invalidly-named traded Pokemon?
 
 class Pokemon:
     '''An individual Pokemon. Takes three bytes objects from Generation II
@@ -35,7 +36,7 @@ class Pokemon:
         #todo: test more items
 
         def convertEVs(EVs):
-            '''Takes a list of old EVs (stat exp) and returns a list of new EVs
+            '''Takes a list of old EVs (stat exp), returns a list of new EVs
             after converting and adjusting for EV sum limits.'''
             from math import sqrt
 
@@ -48,7 +49,7 @@ class Pokemon:
             return EVs
 
         def convertIVs(IVs):
-            '''Takes a list of old IVs and returns a list of new adjusted IVs.'''
+            '''Takes a list of old IVs, returns a list of new adjusted IVs.'''
             from random import randint
 
             newIVs = []
@@ -74,9 +75,9 @@ class Pokemon:
                                self.oldSpecialEV])
         self.HPEV, self.attackEV, self.defenseEV, self.speedEV, self.spAtkEV, self.spDefEV = self.EVs
         
-        self.oldAttackIV = (data[0x15] & 0xf0) >> 4
+        self.oldAttackIV = data[0x15] >> 4
         self.oldDefenseIV = data[0x15] & 0x0f
-        self.oldSpeedIV = (data[0x16] & 0xf0) >> 4
+        self.oldSpeedIV = data[0x16] >> 4
         self.oldSpecialIV = data[0x16] & 0x0f
         temp = [IV & 1 for IV in [self.oldAttackIV,
                                   self.oldDefenseIV,
@@ -154,10 +155,12 @@ class Pokemon:
             self.ability = 0
 
     def setPersonality(self):
-        '''Sets a personality value for the Pokemon. A secret ID must be
-        set first.'''
-        #todo: ensure non-shiny pokemon don't become shiny
+        '''Sets a personality value for the Pokemon. A secret ID must be set
+        first.'''
         from random import randint
+
+        OTID = self.OTID
+        secretID = self.secretID
         
         #gender byte
         cutoff = self.genderCutoff
@@ -173,9 +176,6 @@ class Pokemon:
         p2 = (randint(0, 2**8 - 1) << 8) + pg #lower half
         
         if self.shiny:
-            OTID = self.OTID
-            secretID = self.secretID
-            
             check = OTID ^ secretID ^ p1 ^ p2
             checkbits = list('{:0>16b}'.format(check)) #16-bit binary
             p1bits = list('{:0>16b}'.format(p1))
@@ -208,6 +208,11 @@ class Pokemon:
             else:
                 raise Exception('Could not give a proper PV to ' + str(self))
             p1, p2 = newp1, newp2
+
+        check = OTID ^ secretID ^ p1 ^ p2
+        if not self.shiny and check < 8:
+            print('Whoops! Made {} shiny.'.format(self)) #temp
+            return self.setPersonality()
 
         self.personality = (p1 << 16) + p2
 
@@ -409,6 +414,9 @@ class Sector:
 
     LENGTH = 4096 #final length in bytes
     VALIDATED_BOX_LENGTH = 3968 #length of validated data in "Box Sector" in bytes
+    FIRST_BOX_ID = 5 #ID of Sector with Box 1 data
+    FIRST_BOX_OFFSET = 4 #offset of data for Box 1 within its Sector
+    LAST_BOX_ID = 13 #ID of Sector with Box 14 data
     
     def __init__(self, ID, saveIndex):
         #lengths of checksum-validated regions in bytes
@@ -465,27 +473,36 @@ class SaveGame:
     def __init__(self, data):
         secLen = Sector.LENGTH
         numSecs = self.NUMBER_OF_SECTORS
+        box1 = Sector.FIRST_BOX_ID
+        box1Off = Sector.FIRST_BOX_OFFSET
         
-        order = [data[i*secLen + 0xFF4] for i in range(numSecs)]
+        secOrder = [data[i*secLen + 0xFF4] for i in range(numSecs)] #list of IDs
         oldData = [data[i*secLen:(i+1)*secLen] for i in range(numSecs)]
-        self.oldData = {ID:data for ID,data in zip(order, oldData)}
+        self.oldData = {ID:data for ID,data in zip(secOrder, oldData)}
+        
         self.saveIndex = findSaveIndex(data)
-        self.sectors = [Sector(i, self.saveIndex) for i in order]
+        self.sectors = [Sector(i, self.saveIndex) for i in secOrder]
+        
+        selectedBox = self.oldData[box1][:box1Off]
+        self.getSectorByID(box1).write(selectedBox)
 
     def closeBoxes(self):
-        '''Adds the last bits of Box data. For use after all boxes
-        have been inserted or copied.'''
+        '''Adds the last bits of Box data. Called automatically when the
+        final box has been copied or inserted.'''
 
-        self.getSectorByID(13).write(self.oldData[13][0x744:0x7D0])
+        lastBox = Sector.LAST_BOX_ID
+        
+        finalData = self.oldData[lastBox][0x744:0x7D0]
+        self.getSectorByID(lastBox).write(finalData)
 
     def copyOldBox(self, boxNum):
-        '''Takes an integer and copies box boxNum from a SaveGame's
-        old data to its new data.'''
+        '''Takes an integer, copies box boxNum from a SaveGame's old data
+        to its new data. Make sure all previous boxes have been set first.'''
 
         boxLen = Box.NEW_LENGTH
         secLen = Sector.VALIDATED_BOX_LENGTH
 
-        sectorID, sectorStart = SaveGame.getBoxOffset(boxNum)
+        sectorID, sectorStart = self.getBoxOffset(boxNum)
         sector1 = self.oldData[sectorID][:secLen]
         sector2 = self.oldData[sectorID+1][:secLen]
         sectorData = sector1 + sector2
@@ -494,10 +511,13 @@ class SaveGame:
         if i != -1:
             self.getSectorByID(sectorID+1).write(boxData[i:])
 
+        if boxNum == self.NUMBER_OF_BOXES:
+            self.closeBoxes()
+
     def copyOldSector(self, sectorID):
-        '''Takes an integer sector ID and copies the SaveGame's
-        old sector into its new one. Only recommended for sectors
-        that don't contain box data.'''
+        '''Takes an integer sector ID, copies the SaveGame's old sector into
+        its new one. For sectors that contain box data, use copyOldBox
+        instead.'''
 
         sectorData = self.oldData[sectorID]
         self.getSectorByID(sectorID).write(sectorData)
@@ -508,12 +528,14 @@ class SaveGame:
         the sector ID and sector offset of where to start writing
         data for the beginning of box boxNum.'''
 
-        #todo: magic numbers?
         boxLen = Box.NEW_LENGTH
         secLen = Sector.VALIDATED_BOX_LENGTH
-        internalStart = (boxNum-1)*boxLen + 4
+        box1 = Sector.FIRST_BOX_ID
+        box1Off = Sector.FIRST_BOX_OFFSET
+        
+        internalStart = (boxNum-1)*boxLen + box1Off
         sectorStart = internalStart % secLen
-        sectorID = int(internalStart / secLen) + 5
+        sectorID = int(internalStart / secLen) + box1
         return sectorID, sectorStart
 
     def getSectorByID(self, ID):
@@ -527,11 +549,14 @@ class SaveGame:
         '''Takes a Box and sets it as a SaveGame's boxNum-th box. Make
         sure all previous boxes have been set first.'''
 
-        sectorID = SaveGame.getBoxOffset(boxNum)[0]
+        sectorID = self.getBoxOffset(boxNum)[0]
         boxData = box.newData()
         i = self.getSectorByID(sectorID).write(boxData)
         if i != -1:
             self.getSectorByID(sectorID+1).write(boxData[i:])
+
+        if boxNum == self.NUMBER_OF_BOXES:
+            self.closeBoxes()
 
     def read(self):
         '''Returns a bytes object representation of the save game.
@@ -541,11 +566,6 @@ class SaveGame:
         for sector in self.sectors:
             data += sector.read()
         return data
-
-    def setUpBoxes(self):
-        '''Preps the Save Game for use of insertBox and copyOldBox.'''
-
-        self.getSectorByID(5).write(self.oldData[5][0:4])
 
 class NewSaveFile:
     '''Contains the entirety of a Generation III save file. Takes a string
@@ -584,15 +604,13 @@ class NewSaveFile:
         '''Takes a string file name, writes all of the data to the
         given output file.'''
 
-        for i in range(5): #todo: Sectors 0-4 won't always be copied
+        for i in range(Sector.FIRST_BOX_ID): #todo: Sectors 0-4 won't always be copied
             self.curSave.copyOldSector(i)
-        self.curSave.setUpBoxes()
         for i,box in enumerate(self.boxes):
             if box == None:
                 self.curSave.copyOldBox(i+1)
             else:
                 self.curSave.insertBox(box, i+1)
-        self.curSave.closeBoxes()
 
         newSaveData = self.curSave.read()
 
@@ -611,7 +629,8 @@ class OldSaveFile:
     input file name.'''
 
     NUMBER_OF_BOXES = 14
-    BOX_OFFSETS = [0x4000, 0x4450, 0x48a0, 0x4cf0, 0x5140, 0x5590, 0x59e0, 0x6000, 0x6450, 0x68a0, 0x6cf0, 0x7140, 0x7590, 0x79e0]
+    BOX_OFFSETS = [0x4000, 0x4450, 0x48a0, 0x4cf0, 0x5140, 0x5590, 0x59e0,
+                   0x6000, 0x6450, 0x68a0, 0x6cf0, 0x7140, 0x7590, 0x79e0]
 
     def __init__(self, filename):
         file = open(filename, 'br')
@@ -627,9 +646,9 @@ class OldSaveFile:
         return [box for box in self.boxes if box != None]
 
     def setTraits(self, game, language, OTGender, secretID):
-        '''Sets all of the parameters as traits for every Pokemon in
-        every unloaded Box, then gives each Pokemon a personality
-        value and ability.'''
+        '''Sets all of the parameters as traits for every Pokemon in every
+        unloaded Box, then gives each Pokemon a personality value and ability.
+        This should be used after all wanted Boxes have been unloaded.'''
 
         for box in self.boxes:
             if box != None:
@@ -645,12 +664,12 @@ class OldSaveFile:
         return self.boxes[boxNum-1]
 
     def save(self, filename):
-        '''Takes a string file name, writes all of the data to the
-        given output file.'''
+        '''Takes a string file name, writes all of the data to the given
+        output file.'''
 
         boxLen = Box.OLD_LENGTH
         boxOffs = self.BOX_OFFSETS
-        emptyBoxData = bytes([0x0, 0xFF]) + bytes(boxLen - 4) + bytes([0xFF, 0x0])
+        emptyBoxData = bytes([0x0, 0xFF]) + bytes(boxLen-4) + bytes([0xFF, 0x0])
 
         newData = bytes()
         newData += self.data[:0x4000]
@@ -695,31 +714,43 @@ def oldNameTrans(data):
         word += table[byte]
 
 def newNameTrans(name, length):
-    '''Translates a name into a new bytes object, padding up to length if
-    necessary.'''
+    '''Takes a string name, returns a new translated bytes object, padding up
+    to length if necessary.'''
 
-    stop = 0xFF
-    fill = 0x00
+    STOP = 0xFF
+    FILL = 0x00
     table = {' ': 0, 'PK': 83, 'MN': 84, '(': 92, ')': 93,
              '0': 161, '1': 162, '2': 163, '3': 164, '4': 165, '5': 166, '6': 167, '7': 168, '8': 169, '9': 170,
              '!': 171, '?': 172, '.': 173, '-': 174, ',': 184, '*': 185, '/': 186,
              'A': 187, 'B': 188, 'C': 189, 'D': 190, 'E': 191, 'F': 192, 'G': 193, 'H': 194, 'I': 195, 'J': 196, 'K': 197, 'L': 198, 'M': 199, 'N': 200, 'O': 201, 'P': 202, 'Q': 203, 'R': 204, 'S': 205, 'T': 206, 'U': 207, 'V': 208, 'W': 209, 'X': 210, 'Y': 211, 'Z': 212,
              'a': 213, 'b': 214, 'c': 215, 'd': 216, 'e': 217, 'f': 218, 'g': 219, 'h': 220, 'i': 221, 'j': 222, 'k': 223, 'l': 224, 'm': 225, 'n': 226, 'o': 227, 'p': 228, 'q': 229, 'r': 230, 's': 231, 't': 232, 'u': 233, 'v': 234, 'w': 235, 'x': 236, 'y': 237, 'z': 238,
              ':': 240}
-    #todo: ;, [, and ] are missing, handle these somewhere
+    MESSAGE_INVALID = "Pokemon {}'s name contains the invalid character {}.\n\nPlease enter a new name for {}.\n\nFor the special combination PK and MN characters, use \\PK and \\MN."
+    MESSAGE_LONG = "Pokemon {}'s name is too long.\n\nPlease enter a new name for {}.\n\nFor the special combination PK and MN characters, use \\PK and \\MN."
+
     data = []
     i = 0
+    c = 0
     while i < len(name):
         if name[i] == '\\':
             data.append(table[name[i+1:i+3]])
             i += 3
+        elif name[i] not in table:
+            from gui import nameHandler
+            newName = nameHandler(name, MESSAGE_INVALID.format(name, name[i], name))
+            return newNameTrans(newName, length)
         else:
             data.append(table[name[i]])
             i += 1
+        c += 1
+        if c > Pokemon.NEW_NAME_LENGTH:
+            from gui import nameHandler
+            newName = nameHandler(name, MESSAGE_LONG.format(name, name))
+            return newNameTrans(newName, length)
     if len(data) < length:
-        data.append(stop)
+        data.append(STOP)
     if len(data) < length:
-        data += [fill for i in range(length - len(data))]
+        data += [FILL for i in range(length - len(data))]
     return bytes(data)
 
 def newSecretID():
@@ -745,7 +776,9 @@ def transfer(oldGen2, newGen2, oldGen3, newGen3, oldBoxNums, newBoxNums,
     oldGame.save(newGen2)
     newGame.save(newGen3)
 
-if __name__ == '__main__':    
+if __name__ == '__main__':
+    import subprocess
+    
     oldCrystal = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Crystal (U) [C][!].sav'
     newCrystal = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Crystal (U) [C][!] Test.sav'
     oldRuby = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Ruby.sav'
@@ -760,3 +793,6 @@ if __name__ == '__main__':
     transfer(oldCrystal, newCrystal, oldRuby, newRuby, oldBoxNums, newBoxNums,
              newGame, language, gender)
 
+    emulator = 'C:/Users/Sidnoea/Documents/Video Games/Gameboy and GBA/VisualBoyAdvance-1.7.2/VisualBoyAdvance.exe'
+    rom = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Ruby Test.GBA'
+    subprocess.Popen([emulator, rom])
