@@ -1,7 +1,7 @@
 '''
-This file contains all of the code necessary for transferring Pokemon
-from one generation to the next. The transfer() function will do all
-of the work needed; everything else is for internal use.
+This file contains all of the code necessary for transferring Pokemon from one
+generation to the next. The transfer() function will do all of the work needed;
+everything else is for internal use (except for maybe some constants).
 '''
 
 #todo: Set Pokedex flags on transfer
