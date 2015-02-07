@@ -10,6 +10,7 @@ everything else is for internal use (except for maybe some constants).
 #todo: Documentation (usage, conversion factors, etc.)
 #todo: GUI
 #todo: Allow or disallow renaming of invalidly-named traded Pokemon?
+#todo: Handle invalid Pokemon (index number)
 
 class Pokemon:
     '''An individual Pokemon. Takes three bytes objects from Generation II
