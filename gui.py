@@ -4,6 +4,8 @@
 #to the window on entry and wipes the window contents on exit/before calling
 #the next function. Each window has its own nav button functions.
 
+debug = True
+
 from tkinter import *
 from tkinter import ttk
 
@@ -11,46 +13,105 @@ WIDTH = 600
 HEIGHT = 450
 MAIN_PAD = 10
 
-def setNavCommands(root, old, prevWin=None, nextWin=None):
-    '''Takes a root window, a Frame to be destroyed, and two window functions,
-    sets up the navigational buttons with proper functions.'''
+class Root(Tk):
+    '''A class for the root window of the GUI. Takes a list of page functions.
+    Each page function should take a root Frame and return a list containing a
+    Frame, a string page title, and a dictionary of grid configuration
+    options.'''
 
-    if prevWin is not None:
-        def backCommand():
-            old.destroy()
-            toggleNav(root, 'both', 'both', False)
-            prevWin(root)
-        root.navFrame.backButton['command'] = backCommand
+    def __init__(self, pageFuns):
+        from os import getcwd
 
-    if nextWin is not None:
-        def nextCommand():
-            old.destroy()
-            toggleNav(root, 'both', 'both', False)
-            nextWin(root)
-        root.navFrame.nextButton['command'] = nextCommand
+        super().__init__()
+        
+        self.pageFuns = pageFuns
 
-def toggleNav(root, direction, state, value):
-    '''Takes a root window, a string 'back' 'next' or 'both', a string
-    'hidden' 'disabled' or 'both', and a boolean, applies the appropriate state
-    to the navigational button based on the truth of value.'''
+        self.page = 0
+        self.lastPage = len(pageFuns) - 1
+        self.pages = {}
+        self.titles = {}
+        self.dir = getcwd() #todo: this probably belongs elsewhere
 
-    buttons = []
-    if direction == 'back' or direction == 'both':
-        buttons.append(root.navFrame.backButton)
-    if direction == 'next' or direction == 'both':
-        buttons.append(root.navFrame.nextButton)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
 
-    for button in buttons:
-        if state == 'hidden' or state == 'both':
-            if value:
-                button.grid_remove()
-            else:
-                button.grid()
-        if state == 'disabled' or state == 'both':
-            if value:
-                button.state(['disabled'])
-            else:
-                button.state(['!disabled'])
+        self.mainFrame = ttk.Frame()
+##        self.load(0)
+
+    def load(self, page):
+        '''Takes an int page number, loads that page.'''
+
+        self.mainFrame.grid_remove()
+        self.page = page
+
+        if page in self.pages:
+            self.mainFrame = self.pages[page]
+            self.mainFrame.grid()
+            self.title(self.titles[page])
+        else:
+            newFrame, title, config = self.pageFuns[page](self)
+            newFrame.grid(row=0, column=0, cnf=config)
+            self.pages[page] = newFrame
+            self.mainFrame = newFrame
+            self.title(title)
+            self.titles[page] = title
+
+    def mainloop(self):
+        '''Starts the main loop.'''
+
+        self.load(0)
+        super().mainloop()
+
+    def nextPage(self):
+        '''Loads the next page.'''
+
+        if self.page < self.lastPage:
+            self.load(self.page + 1)
+            
+
+    def prevPage(self):
+        '''Loads the previous page.'''
+
+        if self.page > 0:
+            self.load(self.page - 1)
+
+class Nav(ttk.Frame):
+    '''A class for navigational Frames. Takes a master Frame and two
+    navigational functions.'''
+
+    def __init__(self, master, backFun, nextFun):
+        super().__init__(master, padding=MAIN_PAD)
+        
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=1)
+
+        backButton = ttk.Button(self, text='<-- Back', command=backFun)
+        backButton.grid(row=0, column=0, sticky='w')
+        self.backButton = backButton
+
+        nextButton = ttk.Button(self, text='Next -->', command=nextFun)
+        nextButton.grid(row=0, column=1, sticky='e')
+        self.nextButton = nextButton
+
+    def disable(self, direction, boolean):
+        '''Takes a string 'back' or 'next' and a bool, disables the Button if
+        boolean is True, enables it if boolean is False.'''
+
+        button = getattr(self, direction + 'Button')
+        if boolean:
+            button.state(['disabled'])
+        else:
+            button.state(['!disabled'])
+    
+    def hide(self, direction, boolean):
+        '''Takes a string 'back' or 'next' and a bool, hides the Button if
+        boolean is True, unhides it if boolean is False.'''
+
+        button = getattr(self, direction + 'Button')
+        if boolean:
+            button.grid_remove()
+        else:
+            button.grid()
 
 def getDir(fileName):
     '''Takes a string file name, returns the string directory of that file.'''
@@ -72,46 +133,21 @@ def setState(boolean, state, widgets):
 def main():
     '''Sets up the initial window.'''
 
-    from os import getcwd
-
-    root = Tk()
+    root = Root([title, filePicker, boxPicker, overwritePicker])
     root.geometry('{}x{}'.format(WIDTH, HEIGHT))
     root.resizable(False, False)
-    root.rowconfigure(0, weight=1)
-    root.rowconfigure(1, weight=1)
-    root.columnconfigure(0, weight=1)
 
-    root.dir = getcwd()
-
-    
-    navFrame = ttk.Frame(root, padding=MAIN_PAD)
-    navFrame.grid(row=1, column=0, sticky='sew')
-    navFrame.columnconfigure(0, weight=1)
-    navFrame.columnconfigure(1, weight=1)
-
-    backButton = ttk.Button(navFrame, text='<-- Back')
-    backButton.grid(row=0, column=0, sticky='w')
-
-    nextButton = ttk.Button(navFrame, text='Next -->')
-    nextButton.grid(row=0, column=1, sticky='e')
-
-    navFrame.backButton = backButton
-    navFrame.nextButton = nextButton
-
-    root.navFrame = navFrame
-
-    title(root)
-
-    #root.after(100, title, root)
-    #root.mainloop()
+    root.mainloop()
 
 def title(root):
     '''Creates the title window.'''
 
-    root.title("PokeBridge")
-    
+    baseFrame = ttk.Frame(root)
+    baseFrame.rowconfigure(0, weight=1)
+    baseFrame.columnconfigure(0, weight=1)
 
-    mainFrame = ttk.Frame(root, padding=MAIN_PAD)
+    
+    mainFrame = ttk.Frame(baseFrame, padding=MAIN_PAD)
     mainFrame.grid(row=0, column=0, sticky='n')
 
     titleLabel = ttk.Label(mainFrame, text='PokeBridge')
@@ -132,21 +168,21 @@ def title(root):
     
     mainFrame.pics = [pic1, pic2] #need this to avoid garbage collection...
 
-    
-    setNavCommands(root, mainFrame, nextWin=filePicker)
-    toggleNav(root, 'back', 'hidden', True)
-    
 
-    root.mainloop()
+    navFrame = Nav(baseFrame, root.prevPage, root.nextPage)
+    navFrame.grid(row=1, column=0, sticky='we')
+    navFrame.hide('back', True)
+
+    return (baseFrame, 'PokeBridge', {'sticky':'nsew'})
 
 def filePicker(root):
     '''Makes the window that lets the user specify save files and options.'''
 
     def nextToggle(*args, **kwargs):
         if fromText.get() == '' or toText.get() == '':
-            toggleNav(root, 'next', 'disabled', True)
+            navFrame.disable('next', True)
         else:
-            toggleNav(root, 'next', 'disabled', False)
+            navFrame.disable('next', False)
 
     def fromDialog():
         file = filedialog.askopenfilename(title='Gen II Save File',
@@ -155,6 +191,7 @@ def filePicker(root):
                                           initialdir=root.dir)
         if file != '':
             fromText.set(file)
+            fromEntry.after(100, fromEntry.xview_moveto, 1) #todo: why??
             root.dir = getDir(file)
     
     def toDialog():
@@ -164,17 +201,19 @@ def filePicker(root):
                                           initialdir=root.dir)
         if file != '':
             toText.set(file)
+            toEntry.after(100, toEntry.xview_moveto, 1) #todo: why??
             root.dir = getDir(file)
-    
-    root.title("Select Save Files")
 
+    baseFrame = ttk.Frame(root)
+    baseFrame.rowconfigure(0, weight=1)
+    baseFrame.columnconfigure(0, weight=1)
     
-    mainFrame = ttk.Frame(root, padding=MAIN_PAD)
-    mainFrame.grid(row=0, column=0, sticky='ns')
-    mainFrame.columnconfigure(0, weight=1)
+    
+    mainFrame = ttk.Frame(baseFrame, padding=MAIN_PAD)
+    mainFrame.grid(row=0, column=0)
     mainFrame.rowconfigure(0, weight=1)
-    mainFrame.rowconfigure(1, weight=1)
-
+    mainFrame.columnconfigure(0, weight=1)
+    
 
     pickerFrame = ttk.Frame(mainFrame)
     pickerFrame.grid(row=0, column=0, sticky='s')
@@ -186,7 +225,7 @@ def filePicker(root):
     fromButton = ttk.Button(pickerFrame, text='From...', command=fromDialog)
     fromButton.grid(row=1, column=0, sticky='e', padx=5, pady=5)
 
-    fromText = StringVar(pickerFrame)
+    fromText = StringVar()
     fromText.trace('w', nextToggle)
     fromEntry = ttk.Entry(pickerFrame, textvariable=fromText, state='readonly')
     fromEntry.grid(row=1, column=1, sticky='w', padx=5, pady=5)
@@ -194,7 +233,7 @@ def filePicker(root):
     toButton = ttk.Button(pickerFrame, text='To...', command=toDialog)
     toButton.grid(row=2, column=0, sticky='e', padx=5, pady=5)
 
-    toText = StringVar(pickerFrame)
+    toText = StringVar()
     toText.trace('w', nextToggle)
     toEntry = ttk.Entry(pickerFrame, textvariable=toText, state='readonly')
     toEntry.grid(row=2, column=1, sticky='w', padx=5, pady=5)
@@ -237,14 +276,19 @@ def filePicker(root):
     genderCombo.grid(row=3, column=1, sticky='w', padx=5, pady=5)
 
 
-    setNavCommands(root, mainFrame, title, boxPicker)
+    navFrame = Nav(baseFrame, root.prevPage, root.nextPage)
+    navFrame.grid(row=1, column=0, sticky='we')
+
+    if debug:
+        fromText.set('debug.sav')
+        toText.set('debug.sav')
 
     nextToggle()
 
     #todo: don't allow user to leave this page until valid files are specified
     #todo: save vars on exit
 
-    root.mainloop()
+    return (baseFrame, 'Select Save Files', {'sticky':'nsew'})
 
 def boxPicker(root):
     '''Creates the window for selecting the boxes to be transferred.'''
@@ -252,16 +296,18 @@ def boxPicker(root):
 
     def makeButtonFun(i):
         def buttonFun():
-            boxDisplay['text'] = toChoices[i+1]
+            boxDisplay['text'] = comboChoices[i+1]
         return buttonFun
     
-    numBoxes = SaveGame.NUMBER_OF_BOXES    
+    numBoxes = SaveGame.NUMBER_OF_BOXES
 
-    root.title("Box Selection")
+    baseFrame = ttk.Frame(root)
+    baseFrame.rowconfigure(0, weight=1)
+    baseFrame.columnconfigure(0, weight=1)
 
     
-    mainFrame = ttk.Frame(root, padding=MAIN_PAD)
-    mainFrame.grid(column=0, row=0, sticky='we')
+    mainFrame = ttk.Frame(baseFrame, padding=MAIN_PAD)
+    mainFrame.grid(row=0, column=0, sticky='nwe')
     mainFrame.columnconfigure(0, weight=1)
     mainFrame.columnconfigure(1, weight=1)
 
@@ -274,19 +320,19 @@ def boxPicker(root):
     
     fromButtons = {}
     toCombos = {}
-    comboTexts = {i:StringVar() for i in range(numBoxes)}
+    comboTexts = {i:StringVar(value='None') for i in range(numBoxes)}
+    boxesFrame.comboTexts = comboTexts #avoiding garbage collection
     #todo: get actual box names
-    toChoices = ["None"] + ["BOX {}".format(i+1) for i in range(numBoxes)]
+    comboChoices = ['None'] + ['BOX {}'.format(i+1) for i in range(numBoxes)]
     for i in range(numBoxes):
-        fromButtons[i] = ttk.Button(boxesFrame, text="BOX {}".format(i+1),
+        fromButtons[i] = ttk.Button(boxesFrame, text='BOX {}'.format(i+1),
                                     command=makeButtonFun(i))
         fromButtons[i].grid(row=i+1, column=0, padx=5)
-        toCombos[i] = ttk.Combobox(boxesFrame, values=toChoices, width=10,
+        toCombos[i] = ttk.Combobox(boxesFrame, values=comboChoices, width=10,
                                    textvariable=comboTexts[i],
                                    state='readonly')
-        toCombos[i].set(toChoices[0])
         toCombos[i].grid(row=i+1, column=1, padx=5)
-    #todo: make buttons do more things
+    #todo: make buttons load pictures
 
     
     displayFrame = ttk.Frame(mainFrame)
@@ -298,10 +344,11 @@ def boxPicker(root):
                            wraplength=DISP_WIDTH)
     instrLabel.grid(row=0, column=0)
 
-    boxDisplay = ttk.Labelframe(displayFrame, text=toChoices[1])
+    boxDisplay = ttk.Labelframe(displayFrame, text=comboChoices[1])
     boxDisplay.grid(row=1, column=0, pady=20)
     
     pic = PhotoImage(file="res\\000.png")
+    displayFrame.pic = pic #avoiding garbage collection
     for i in range(5):
         for j in range(4):
             ttk.Label(boxDisplay, image=pic).grid(column=i, row=j)
@@ -313,9 +360,10 @@ def boxPicker(root):
     warningLabel.grid(row=2, column=0)
 
 
-    setNavCommands(root, mainFrame, filePicker, overwritePicker)
+    navFrame = Nav(baseFrame, root.prevPage, root.nextPage)
+    navFrame.grid(row=1, column=0, sticky='we')
 
-    root.mainloop()
+    return (baseFrame, 'Box Selection', {'sticky':'nsew'})
 
 def overwritePicker(root):
     '''Creates the window for deciding to overwrite or not.'''
@@ -334,6 +382,7 @@ def overwritePicker(root):
                                             initialdir=root.dir)
         if file != '':
             gen2Text.set(file)
+            gen2Entry.after(100, gen2Entry.xview_moveto, 1)
             root.dir = getDir(file)
 
     def gen3Dialog():
@@ -344,12 +393,15 @@ def overwritePicker(root):
                                             initialdir=root.dir)
         if file != '':
             gen3Text.set(file)
+            gen3Entry.after(100, gen3Entry.xview_moveto, 1)
             root.dir = getDir(file)
 
-    root.title("Overwrite?")
+    baseFrame = ttk.Frame(root)
+    baseFrame.rowconfigure(0, weight=1)
+    baseFrame.columnconfigure(0, weight=1)
     
-        
-    mainFrame = ttk.Frame(root, padding=MAIN_PAD)
+    
+    mainFrame = ttk.Frame(baseFrame, padding=MAIN_PAD)
     mainFrame.grid(row=0, column=0, sticky='ns')
     mainFrame.rowconfigure(0, weight=2)
     mainFrame.rowconfigure(3, weight=1)
@@ -387,7 +439,7 @@ def overwritePicker(root):
     gen2Button = ttk.Button(pickerFrame, text='To...', command=gen2Dialog)
     gen2Button.grid(row=1, column=0, sticky='e', padx=5, pady=5)
 
-    gen2Text = StringVar(pickerFrame)        
+    gen2Text = StringVar(pickerFrame)
     gen2Entry = ttk.Entry(pickerFrame, textvariable=gen2Text, state='readonly')
     gen2Entry.grid(row=1, column=1, sticky='w', padx=5, pady=5)
 
@@ -408,12 +460,13 @@ def overwritePicker(root):
     fillerFrame.grid(row=3, column=0, sticky='ns')
 
 
-    setNavCommands(root, mainFrame, boxPicker) #todo: fwd
-    toggleNav(root, 'next', 'hidden', True)
+    navFrame = Nav(baseFrame, root.prevPage, root.nextPage)
+    navFrame.grid(row=1, column=0, sticky='we')
+    navFrame.hide('next', True)
     #todo: if do not overwrite is picked, don't allow user to leave this page
     #      until valid file locations are specified
 
-    root.mainloop()    
+    return (baseFrame, 'Overwrite?', {'sticky':'nsew'})
 
 def nameHandler(name, message):
     '''Takes a string name and character, provides an interface for correcting
