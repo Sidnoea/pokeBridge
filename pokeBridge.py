@@ -7,10 +7,11 @@ everything else is for internal use (except for maybe some constants).
 #todo: Set Pokedex flags on transfer
 #todo: Hidden Power? Probably not...
 #todo: Test a bunch of Unown and shiny Unown
-#todo: Documentation (usage, conversion factors, etc.)
-#todo: GUI
+#todo: Test more items
 #todo: Allow or disallow renaming of invalidly-named traded Pokemon?
 #todo: Handle invalid Pokemon (index number)
+#todo: Documentation (usage, conversion factors, etc.)
+#todo: Fix too-long lines of code
 
 class Pokemon:
     '''An individual Pokemon. Takes three bytes objects from Generation II
@@ -26,15 +27,13 @@ class Pokemon:
     GENDER_MALE = 0
     GENDER_FEMALE = 254
     GENDER_NONE = 255
+
+    NAMES = {1: 'Bulbasaur', 2: 'Ivysaur', 3: 'Venusaur', 4: 'Charmander', 5: 'Charmeleon', 6: 'Charizard', 7: 'Squirtle', 8: 'Wartortle', 9: 'Blastoise', 10: 'Caterpie', 11: 'Metapod', 12: 'Butterfree', 13: 'Weedle', 14: 'Kakuna', 15: 'Beedrill', 16: 'Pidgey', 17: 'Pidgeotto', 18: 'Pidgeot', 19: 'Rattata', 20: 'Raticate', 21: 'Spearow', 22: 'Fearow', 23: 'Ekans', 24: 'Arbok', 25: 'Pikachu', 26: 'Raichu', 27: 'Sandshrew', 28: 'Sandslash', 29: 'Nidoran?', 30: 'Nidorina', 31: 'Nidoqueen', 32: 'Nidoran?', 33: 'Nidorino', 34: 'Nidoking', 35: 'Clefairy', 36: 'Clefable', 37: 'Vulpix', 38: 'Ninetales', 39: 'Jigglypuff', 40: 'Wigglytuff', 41: 'Zubat', 42: 'Golbat', 43: 'Oddish', 44: 'Gloom', 45: 'Vileplume', 46: 'Paras', 47: 'Parasect', 48: 'Venonat', 49: 'Venomoth', 50: 'Diglett', 51: 'Dugtrio', 52: 'Meowth', 53: 'Persian', 54: 'Psyduck', 55: 'Golduck', 56: 'Mankey', 57: 'Primeape', 58: 'Growlithe', 59: 'Arcanine', 60: 'Poliwag', 61: 'Poliwhirl', 62: 'Poliwrath', 63: 'Abra', 64: 'Kadabra', 65: 'Alakazam', 66: 'Machop', 67: 'Machoke', 68: 'Machamp', 69: 'Bellsprout', 70: 'Weepinbell', 71: 'Victreebel', 72: 'Tentacool', 73: 'Tentacruel', 74: 'Geodude', 75: 'Graveler', 76: 'Golem', 77: 'Rapidash', 79: 'Slowpoke', 80: 'Slowbro', 81: 'Magnemite', 82: 'Magneton', 83: "Farfetch'd", 84: 'Doduo', 85: 'Dodrio', 86: 'Seel', 87: 'Dewgong', 88: 'Grimer', 89: 'Muk', 90: 'Shellder', 91: 'Cloyster', 92: 'Gastly', 93: 'Haunter', 94: 'Gengar', 95: 'Onix', 96: 'Drowzee', 97: 'Hypno', 98: 'Krabby', 99: 'Kingler', 100: 'Voltorb', 101: 'Electrode', 102: 'Exeggcute', 103: 'Exeggutor', 104: 'Cubone', 105: 'Marowak', 106: 'Hitmonlee', 107: 'Hitmonchan', 108: 'Lickitung', 109: 'Koffing', 110: 'Weezing', 111: 'Rhyhorn', 112: 'Rhydon', 113: 'Chansey', 114: 'Tangela', 115: 'Kangaskhan', 116: 'Horsea', 117: 'Seadra', 118: 'Goldeen', 119: 'Seaking', 120: 'Staryu', 121: 'Starmie', 122: 'Mr. Mime', 123: 'Scyther', 124: 'Jynx', 125: 'Electabuzz', 126: 'Magmar', 127: 'Pinsir', 128: 'Tauros', 129: 'Magikarp', 130: 'Gyarados', 131: 'Lapras', 132: 'Ditto', 133: 'Eevee', 134: 'Vaporeon', 135: 'Jolteon', 136: 'Flareon', 137: 'Porygon', 138: 'Omanyte', 139: 'Omastar', 140: 'Kabuto', 141: 'Kabutops', 142: 'Aerodactyl', 143: 'Snorlax', 144: 'Articuno', 145: 'Zapdos', 146: 'Moltres', 147: 'Dratini', 148: 'Dragonair', 149: 'Dragonite', 150: 'Mewtwo', 151: 'Mew', 152: 'Chikorita', 153: 'Bayleef', 154: 'Meganium', 155: 'Cyndaquil', 156: 'Quilava', 157: 'Typhlosion', 158: 'Totodile', 159: 'Croconaw', 160: 'Feraligatr', 161: 'Sentret', 162: 'Furret', 163: 'Hoothoot', 164: 'Noctowl', 165: 'Ledyba', 166: 'Ledian', 167: 'Spinarak', 168: 'Ariados', 169: 'Crobat', 170: 'Chinchou', 171: 'Lanturn', 172: 'Pichu', 173: 'Cleffa', 174: 'Igglybuff', 175: 'Togepi', 176: 'Togetic', 177: 'Natu', 178: 'Xatu', 179: 'Mareep', 180: 'Flaaffy', 181: 'Ampharos', 182: 'Bellossom', 183: 'Marill', 184: 'Azumarill', 185: 'Sudowoodo', 186: 'Politoed', 187: 'Hoppip', 188: 'Skiploom', 189: 'Jumpluff', 190: 'Aipom', 191: 'Sunkern', 192: 'Sunflora', 193: 'Yanma', 194: 'Wooper', 195: 'Quagsire', 196: 'Espeon', 197: 'Umbreon', 198: 'Murkrow', 199: 'Slowking', 200: 'Misdreavus', 201: 'Unown', 202: 'Wobbuffet', 203: 'Girafarig', 204: 'Pineco', 205: 'Forretress', 206: 'Dunsparce', 207: 'Gligar', 208: 'Steelix', 209: 'Snubbull', 210: 'Granbull', 211: 'Qwilfish', 212: 'Scizor', 213: 'Shuckle', 214: 'Heracross', 215: 'Sneasel', 216: 'Teddiursa', 217: 'Ursaring', 218: 'Slugma', 219: 'Magcargo', 220: 'Swinub', 221: 'Piloswine', 222: 'Corsola', 223: 'Remoraid', 224: 'Octillery', 225: 'Delibird', 226: 'Mantine', 227: 'Skarmory', 228: 'Houndour', 229: 'Houndoom', 230: 'Kingdra', 231: 'Phanpy', 232: 'Donphan', 233: 'Porygon2', 234: 'Stantler', 235: 'Smeargle', 236: 'Tyrogue', 237: 'Hitmontop', 238: 'Smoochum', 239: 'Elekid', 240: 'Magby', 241: 'Miltank', 242: 'Blissey', 243: 'Raikou', 244: 'Entei', 245: 'Suicune', 246: 'Larvitar', 247: 'Pupitar', 248: 'Tyranitar', 249: 'Lugia', 250: 'Ho-Oh', 251: 'Celebi'}
+    GENDERS = {1: 31, 2: 31, 3: 31, 4: 31, 5: 31, 6: 31, 7: 31, 8: 31, 9: 31, 10: 127, 11: 127, 12: 127, 13: 127, 14: 127, 15: 127, 16: 127, 17: 127, 18: 127, 19: 127, 20: 127, 21: 127, 22: 127, 23: 127, 24: 127, 25: 127, 26: 127, 27: 127, 28: 127, 29: 254, 30: 254, 31: 254, 32: 0, 33: 0, 34: 0, 35: 191, 36: 191, 37: 191, 38: 191, 39: 191, 40: 191, 41: 127, 42: 127, 43: 127, 44: 127, 45: 127, 46: 127, 47: 127, 48: 127, 49: 127, 50: 127, 51: 127, 52: 127, 53: 127, 54: 127, 55: 127, 56: 127, 57: 127, 58: 63, 59: 63, 60: 127, 61: 127, 62: 127, 63: 63, 64: 63, 65: 63, 66: 63, 67: 63, 68: 63, 69: 127, 70: 127, 71: 127, 72: 127, 73: 127, 74: 127, 75: 127, 76: 127, 77: 127, 78: 127, 79: 127, 80: 127, 81: 255, 82: 255, 83: 127, 84: 127, 85: 127, 86: 127, 87: 127, 88: 127, 89: 127, 90: 127, 91: 127, 92: 127, 93: 127, 94: 127, 95: 127, 96: 127, 97: 127, 98: 127, 99: 127, 100: 255, 101: 255, 102: 127, 103: 127, 104: 127, 105: 127, 106: 0, 107: 0, 108: 127, 109: 127, 110: 127, 111: 127, 112: 127, 113: 254, 114: 127, 115: 254, 116: 127, 117: 127, 118: 127, 119: 127, 120: 255, 121: 255, 122: 127, 123: 127, 124: 254, 125: 63, 126: 63, 127: 127, 128: 0, 129: 127, 130: 127, 131: 127, 132: 255, 133: 31, 134: 31, 135: 31, 136: 31, 137: 255, 138: 31, 139: 31, 140: 31, 141: 31, 142: 31, 143: 31, 144: 255, 145: 255, 146: 255, 147: 127, 148: 127, 149: 127, 150: 255, 151: 255, 152: 31, 153: 31, 154: 31, 155: 31, 156: 31, 157: 31, 158: 31, 159: 31, 160: 31, 161: 127, 162: 127, 163: 127, 164: 127, 165: 127, 166: 127, 167: 127, 168: 127, 169: 127, 170: 127, 171: 127, 172: 127, 173: 191, 174: 191, 175: 31, 176: 31, 177: 127, 178: 127, 179: 127, 180: 127, 181: 127, 182: 127, 183: 127, 184: 127, 185: 127, 186: 127, 187: 127, 188: 127, 189: 127, 190: 127, 191: 127, 192: 127, 193: 127, 194: 127, 195: 127, 196: 31, 197: 31, 198: 127, 199: 127, 200: 127, 201: 255, 202: 127, 203: 127, 204: 127, 205: 127, 206: 127, 207: 127, 208: 127, 209: 191, 210: 191, 211: 127, 212: 127, 213: 127, 214: 127, 215: 127, 216: 127, 217: 127, 218: 127, 219: 127, 220: 127, 221: 127, 222: 191, 223: 127, 224: 127, 225: 127, 226: 127, 227: 127, 228: 127, 229: 127, 230: 127, 231: 127, 232: 127, 233: 255, 234: 127, 235: 127, 236: 0, 237: 0, 238: 254, 239: 63, 240: 63, 241: 254, 242: 254, 243: 255, 244: 255, 245: 255, 246: 127, 247: 127, 248: 127, 249: 255, 250: 255, 251: 255}
+    ITEMS = {0: 0, 1: 1, 2: 2, 3: 179, 4: 3, 5: 4, 8: 94, 9: 14, 10: 15, 11: 16, 12: 17, 13: 18, 14: 19, 15: 20, 16: 21, 17: 22, 18: 13, 19: 85, 20: 86, 21: 37, 22: 95, 23: 96, 24: 97, 26: 63, 27: 64, 28: 65, 29: 66, 30: 222, 31: 67, 32: 68, 33: 78, 34: 98, 35: 223, 36: 110, 37: 80, 38: 23, 39: 24, 40: 25, 41: 73, 42: 83, 43: 84, 44: 74, 46: 26, 47: 27, 48: 28, 49: 75, 51: 76, 52: 77, 53: 79, 57: 182, 62: 69, 63: 34, 64: 35, 65: 36, 72: 29, 73: 183, 74: 135, 76: 203, 77: 210, 78: 133, 79: 137, 80: 136, 81: 211, 82: 187, 83: 140, 84: 134, 86: 103, 87: 104, 88: 188, 91: 189, 94: 190, 95: 209, 96: 214, 98: 207, 102: 206, 104: 217, 105: 225, 106: 194, 107: 212, 108: 208, 109: 141, 110: 106, 111: 107, 112: 195, 113: 213, 114: 13, 117: 205, 118: 224, 119: 196, 121: 30, 122: 31, 123: 32, 124: 33, 125: 204, 126: 197, 131: 108, 132: 109, 138: 215, 140: 198, 143: 199, 144: 216, 146: 200, 150: 138, 151: 201, 156: 45, 157: 4, 159: 8, 160: 7, 161: 4, 163: 202, 164: 11, 165: 4, 166: 4, 169: 93, 170: 217, 172: 218, 173: 139, 174: 142, 196: 293, 197: 294, 201: 298, 202: 299, 205: 302, 206: 303, 208: 305, 209: 306, 210: 307, 212: 309, 213: 310, 214: 311, 216: 313, 217: 314, 218: 315, 219: 316, 221: 317, 222: 318, 224: 320, 228: 324, 229: 325, 230: 326, 236: 332, 237: 333, 238: 334, 239: 335}
     
     def __init__(self, data, OTData, nameData, egg):
         from random import randint
-
-        #todo: will moving these somewhere else improve efficiency?
-        names = {1: 'Bulbasaur', 2: 'Ivysaur', 3: 'Venusaur', 4: 'Charmander', 5: 'Charmeleon', 6: 'Charizard', 7: 'Squirtle', 8: 'Wartortle', 9: 'Blastoise', 10: 'Caterpie', 11: 'Metapod', 12: 'Butterfree', 13: 'Weedle', 14: 'Kakuna', 15: 'Beedrill', 16: 'Pidgey', 17: 'Pidgeotto', 18: 'Pidgeot', 19: 'Rattata', 20: 'Raticate', 21: 'Spearow', 22: 'Fearow', 23: 'Ekans', 24: 'Arbok', 25: 'Pikachu', 26: 'Raichu', 27: 'Sandshrew', 28: 'Sandslash', 29: 'Nidoran?', 30: 'Nidorina', 31: 'Nidoqueen', 32: 'Nidoran?', 33: 'Nidorino', 34: 'Nidoking', 35: 'Clefairy', 36: 'Clefable', 37: 'Vulpix', 38: 'Ninetales', 39: 'Jigglypuff', 40: 'Wigglytuff', 41: 'Zubat', 42: 'Golbat', 43: 'Oddish', 44: 'Gloom', 45: 'Vileplume', 46: 'Paras', 47: 'Parasect', 48: 'Venonat', 49: 'Venomoth', 50: 'Diglett', 51: 'Dugtrio', 52: 'Meowth', 53: 'Persian', 54: 'Psyduck', 55: 'Golduck', 56: 'Mankey', 57: 'Primeape', 58: 'Growlithe', 59: 'Arcanine', 60: 'Poliwag', 61: 'Poliwhirl', 62: 'Poliwrath', 63: 'Abra', 64: 'Kadabra', 65: 'Alakazam', 66: 'Machop', 67: 'Machoke', 68: 'Machamp', 69: 'Bellsprout', 70: 'Weepinbell', 71: 'Victreebel', 72: 'Tentacool', 73: 'Tentacruel', 74: 'Geodude', 75: 'Graveler', 76: 'Golem', 77: 'Rapidash', 79: 'Slowpoke', 80: 'Slowbro', 81: 'Magnemite', 82: 'Magneton', 83: "Farfetch'd", 84: 'Doduo', 85: 'Dodrio', 86: 'Seel', 87: 'Dewgong', 88: 'Grimer', 89: 'Muk', 90: 'Shellder', 91: 'Cloyster', 92: 'Gastly', 93: 'Haunter', 94: 'Gengar', 95: 'Onix', 96: 'Drowzee', 97: 'Hypno', 98: 'Krabby', 99: 'Kingler', 100: 'Voltorb', 101: 'Electrode', 102: 'Exeggcute', 103: 'Exeggutor', 104: 'Cubone', 105: 'Marowak', 106: 'Hitmonlee', 107: 'Hitmonchan', 108: 'Lickitung', 109: 'Koffing', 110: 'Weezing', 111: 'Rhyhorn', 112: 'Rhydon', 113: 'Chansey', 114: 'Tangela', 115: 'Kangaskhan', 116: 'Horsea', 117: 'Seadra', 118: 'Goldeen', 119: 'Seaking', 120: 'Staryu', 121: 'Starmie', 122: 'Mr. Mime', 123: 'Scyther', 124: 'Jynx', 125: 'Electabuzz', 126: 'Magmar', 127: 'Pinsir', 128: 'Tauros', 129: 'Magikarp', 130: 'Gyarados', 131: 'Lapras', 132: 'Ditto', 133: 'Eevee', 134: 'Vaporeon', 135: 'Jolteon', 136: 'Flareon', 137: 'Porygon', 138: 'Omanyte', 139: 'Omastar', 140: 'Kabuto', 141: 'Kabutops', 142: 'Aerodactyl', 143: 'Snorlax', 144: 'Articuno', 145: 'Zapdos', 146: 'Moltres', 147: 'Dratini', 148: 'Dragonair', 149: 'Dragonite', 150: 'Mewtwo', 151: 'Mew', 152: 'Chikorita', 153: 'Bayleef', 154: 'Meganium', 155: 'Cyndaquil', 156: 'Quilava', 157: 'Typhlosion', 158: 'Totodile', 159: 'Croconaw', 160: 'Feraligatr', 161: 'Sentret', 162: 'Furret', 163: 'Hoothoot', 164: 'Noctowl', 165: 'Ledyba', 166: 'Ledian', 167: 'Spinarak', 168: 'Ariados', 169: 'Crobat', 170: 'Chinchou', 171: 'Lanturn', 172: 'Pichu', 173: 'Cleffa', 174: 'Igglybuff', 175: 'Togepi', 176: 'Togetic', 177: 'Natu', 178: 'Xatu', 179: 'Mareep', 180: 'Flaaffy', 181: 'Ampharos', 182: 'Bellossom', 183: 'Marill', 184: 'Azumarill', 185: 'Sudowoodo', 186: 'Politoed', 187: 'Hoppip', 188: 'Skiploom', 189: 'Jumpluff', 190: 'Aipom', 191: 'Sunkern', 192: 'Sunflora', 193: 'Yanma', 194: 'Wooper', 195: 'Quagsire', 196: 'Espeon', 197: 'Umbreon', 198: 'Murkrow', 199: 'Slowking', 200: 'Misdreavus', 201: 'Unown', 202: 'Wobbuffet', 203: 'Girafarig', 204: 'Pineco', 205: 'Forretress', 206: 'Dunsparce', 207: 'Gligar', 208: 'Steelix', 209: 'Snubbull', 210: 'Granbull', 211: 'Qwilfish', 212: 'Scizor', 213: 'Shuckle', 214: 'Heracross', 215: 'Sneasel', 216: 'Teddiursa', 217: 'Ursaring', 218: 'Slugma', 219: 'Magcargo', 220: 'Swinub', 221: 'Piloswine', 222: 'Corsola', 223: 'Remoraid', 224: 'Octillery', 225: 'Delibird', 226: 'Mantine', 227: 'Skarmory', 228: 'Houndour', 229: 'Houndoom', 230: 'Kingdra', 231: 'Phanpy', 232: 'Donphan', 233: 'Porygon2', 234: 'Stantler', 235: 'Smeargle', 236: 'Tyrogue', 237: 'Hitmontop', 238: 'Smoochum', 239: 'Elekid', 240: 'Magby', 241: 'Miltank', 242: 'Blissey', 243: 'Raikou', 244: 'Entei', 245: 'Suicune', 246: 'Larvitar', 247: 'Pupitar', 248: 'Tyranitar', 249: 'Lugia', 250: 'Ho-Oh', 251: 'Celebi'}
-        genders = {1: 31, 2: 31, 3: 31, 4: 31, 5: 31, 6: 31, 7: 31, 8: 31, 9: 31, 10: 127, 11: 127, 12: 127, 13: 127, 14: 127, 15: 127, 16: 127, 17: 127, 18: 127, 19: 127, 20: 127, 21: 127, 22: 127, 23: 127, 24: 127, 25: 127, 26: 127, 27: 127, 28: 127, 29: 254, 30: 254, 31: 254, 32: 0, 33: 0, 34: 0, 35: 191, 36: 191, 37: 191, 38: 191, 39: 191, 40: 191, 41: 127, 42: 127, 43: 127, 44: 127, 45: 127, 46: 127, 47: 127, 48: 127, 49: 127, 50: 127, 51: 127, 52: 127, 53: 127, 54: 127, 55: 127, 56: 127, 57: 127, 58: 63, 59: 63, 60: 127, 61: 127, 62: 127, 63: 63, 64: 63, 65: 63, 66: 63, 67: 63, 68: 63, 69: 127, 70: 127, 71: 127, 72: 127, 73: 127, 74: 127, 75: 127, 76: 127, 77: 127, 78: 127, 79: 127, 80: 127, 81: 255, 82: 255, 83: 127, 84: 127, 85: 127, 86: 127, 87: 127, 88: 127, 89: 127, 90: 127, 91: 127, 92: 127, 93: 127, 94: 127, 95: 127, 96: 127, 97: 127, 98: 127, 99: 127, 100: 255, 101: 255, 102: 127, 103: 127, 104: 127, 105: 127, 106: 0, 107: 0, 108: 127, 109: 127, 110: 127, 111: 127, 112: 127, 113: 254, 114: 127, 115: 254, 116: 127, 117: 127, 118: 127, 119: 127, 120: 255, 121: 255, 122: 127, 123: 127, 124: 254, 125: 63, 126: 63, 127: 127, 128: 0, 129: 127, 130: 127, 131: 127, 132: 255, 133: 31, 134: 31, 135: 31, 136: 31, 137: 255, 138: 31, 139: 31, 140: 31, 141: 31, 142: 31, 143: 31, 144: 255, 145: 255, 146: 255, 147: 127, 148: 127, 149: 127, 150: 255, 151: 255, 152: 31, 153: 31, 154: 31, 155: 31, 156: 31, 157: 31, 158: 31, 159: 31, 160: 31, 161: 127, 162: 127, 163: 127, 164: 127, 165: 127, 166: 127, 167: 127, 168: 127, 169: 127, 170: 127, 171: 127, 172: 127, 173: 191, 174: 191, 175: 31, 176: 31, 177: 127, 178: 127, 179: 127, 180: 127, 181: 127, 182: 127, 183: 127, 184: 127, 185: 127, 186: 127, 187: 127, 188: 127, 189: 127, 190: 127, 191: 127, 192: 127, 193: 127, 194: 127, 195: 127, 196: 31, 197: 31, 198: 127, 199: 127, 200: 127, 201: 255, 202: 127, 203: 127, 204: 127, 205: 127, 206: 127, 207: 127, 208: 127, 209: 191, 210: 191, 211: 127, 212: 127, 213: 127, 214: 127, 215: 127, 216: 127, 217: 127, 218: 127, 219: 127, 220: 127, 221: 127, 222: 191, 223: 127, 224: 127, 225: 127, 226: 127, 227: 127, 228: 127, 229: 127, 230: 127, 231: 127, 232: 127, 233: 255, 234: 127, 235: 127, 236: 0, 237: 0, 238: 254, 239: 63, 240: 63, 241: 254, 242: 254, 243: 255, 244: 255, 245: 255, 246: 127, 247: 127, 248: 127, 249: 255, 250: 255, 251: 255}
-        items = {0: 0, 1: 1, 2: 2, 3: 179, 4: 3, 5: 4, 8: 94, 9: 14, 10: 15, 11: 16, 12: 17, 13: 18, 14: 19, 15: 20, 16: 21, 17: 22, 18: 13, 19: 85, 20: 86, 21: 37, 22: 95, 23: 96, 24: 97, 26: 63, 27: 64, 28: 65, 29: 66, 30: 222, 31: 67, 32: 68, 33: 78, 34: 98, 35: 223, 36: 110, 37: 80, 38: 23, 39: 24, 40: 25, 41: 73, 42: 83, 43: 84, 44: 74, 46: 26, 47: 27, 48: 28, 49: 75, 51: 76, 52: 77, 53: 79, 57: 182, 62: 69, 63: 34, 64: 35, 65: 36, 72: 29, 73: 183, 74: 135, 76: 203, 77: 210, 78: 133, 79: 137, 80: 136, 81: 211, 82: 187, 83: 140, 84: 134, 86: 103, 87: 104, 88: 188, 91: 189, 94: 190, 95: 209, 96: 214, 98: 207, 102: 206, 104: 217, 105: 225, 106: 194, 107: 212, 108: 208, 109: 141, 110: 106, 111: 107, 112: 195, 113: 213, 114: 13, 117: 205, 118: 224, 119: 196, 121: 30, 122: 31, 123: 32, 124: 33, 125: 204, 126: 197, 131: 108, 132: 109, 138: 215, 140: 198, 143: 199, 144: 216, 146: 200, 150: 138, 151: 201, 156: 45, 157: 4, 159: 8, 160: 7, 161: 4, 163: 202, 164: 11, 165: 4, 166: 4, 169: 93, 170: 217, 172: 218, 173: 139, 174: 142, 196: 293, 197: 294, 201: 298, 202: 299, 205: 302, 206: 303, 208: 305, 209: 306, 210: 307, 212: 309, 213: 310, 214: 311, 216: 313, 217: 314, 218: 315, 219: 316, 221: 317, 222: 318, 224: 320, 228: 324, 229: 325, 230: 326, 236: 332, 237: 333, 238: 334, 239: 335}
-        #todo: test more items
 
         def convertEVs(EVs):
             '''Takes a list of old EVs (stat exp), returns a list of new EVs
@@ -51,7 +50,6 @@ class Pokemon:
 
         def convertIVs(IVs):
             '''Takes a list of old IVs, returns a list of new adjusted IVs.'''
-            from random import randint
 
             newIVs = []
             for IV in IVs + [IVs[4]]: #spAtk and spDef both based on special
@@ -59,7 +57,7 @@ class Pokemon:
             return newIVs
 
         self.species = data[0x0]
-        self.item = items.get(data[0x1], 0) #bad items are destroyed
+        self.item = self.ITEMS.get(data[0x1], 0) #bad items are destroyed
         self.moves = [move for move in data[0x2:0x6]]
         self.OTID = int.from_bytes(data[0x6:0x8], 'big')
         self.exp = int.from_bytes(data[0x8:0xb], 'big')
@@ -108,9 +106,9 @@ class Pokemon:
         self.shiny = (self.oldDefenseIV ==
                       self.oldSpeedIV   ==
                       self.oldSpecialIV == 10) and self.oldAttackIV in [2,3,6,7,10,11,14,15]
-        self.speciesName = names[self.species]
+        #self.speciesName = self.NAMES[self.species]
 
-        self.genderCutoff = genders[self.species]
+        self.genderCutoff = self.GENDERS[self.species]
         if self.genderCutoff == self.GENDER_NONE:
             self.gender = 'genderless'
         elif self.genderCutoff == self.GENDER_MALE:
@@ -662,7 +660,6 @@ class OldSaveFile:
         start = self.BOX_OFFSETS[boxNum-1]
         self.boxes[boxNum-1] = Box(self.data[start:start+Box.OLD_LENGTH])
         self.unloadedBoxes[boxNum-1] = True
-        return self.boxes[boxNum-1]
 
     def save(self, filename):
         '''Takes a string file name, writes all of the data to the given
@@ -699,8 +696,8 @@ def findSaveIndex(data):
     return int.from_bytes(data[0xFFC:0x1000], 'little')
 
 def oldNameTrans(data):
-    '''Translates an old encoded name or OT. Takes a bytes object,
-    returns a string.'''
+    '''Translates an old encoded name or OT. Takes a bytes object, returns a
+    string.'''
 
     stop = 0x50
     table = {128: 'A', 129: 'B', 130: 'C', 131: 'D', 132: 'E', 133: 'F', 134: 'G', 135: 'H', 136: 'I', 137: 'J', 138: 'K', 139: 'L', 140: 'M', 141: 'N', 142: 'O', 143: 'P', 144: 'Q', 145: 'R', 146: 'S', 147: 'T', 148: 'U', 149: 'V', 150: 'W', 151: 'X', 152: 'Y', 153: 'Z',
@@ -711,12 +708,15 @@ def oldNameTrans(data):
     word = ''
     for byte in data:
         if byte == stop:
-            return word
-        word += table[byte]
+            break
+        word += table.get(byte, '?') #todo: change this validation?
+    return word
 
 def newNameTrans(name, length):
     '''Takes a string name, returns a new translated bytes object, padding up
     to length if necessary.'''
+
+    from gui import nameHandler
 
     STOP = 0xFF
     FILL = 0x00
@@ -733,11 +733,10 @@ def newNameTrans(name, length):
     i = 0
     c = 0
     while i < len(name):
-        if name[i] == '\\':
+        if name[i] == '\\' and (name[i+1:i+3] in ['PK', 'MN']):
             data.append(table[name[i+1:i+3]])
             i += 3
         elif name[i] not in table:
-            from gui import nameHandler
             newName = nameHandler(name, MESSAGE_INVALID.format(name, name[i], name))
             return newNameTrans(newName, length)
         else:
@@ -745,7 +744,6 @@ def newNameTrans(name, length):
             i += 1
         c += 1
         if c > Pokemon.NEW_NAME_LENGTH:
-            from gui import nameHandler
             newName = nameHandler(name, MESSAGE_LONG.format(name, name))
             return newNameTrans(newName, length)
     if len(data) < length:
@@ -762,8 +760,8 @@ def newSecretID():
 
 def transfer(oldGen2, newGen2, oldGen3, newGen3, oldBoxNums, newBoxNums,
              newGame, language, gender):
-    '''Takes 4 string file names, 2 lists of integers, and 3 strings, writes
-    2 new save files with the indicated boxes transferred.'''
+    '''Takes 4 string file names, 2 lists of integers, and 3 strings, writes 2
+    new save files with the indicated boxes transferred. Boxes are 1-indexed.'''
 
     oldGame = OldSaveFile(oldGen2)
     for i in oldBoxNums:
