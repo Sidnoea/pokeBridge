@@ -233,6 +233,8 @@ class Pokemon:
                  'FireRed'  : 4,
                  'LeafGreen': 5,
                  'Orre'     : 15}
+        genders = {'Male': 0, 'Female': 1}
+        
         #substructure orders
         orders = (('g', 'a', 'e', 'm'), ('g', 'a', 'm', 'e'), ('g', 'e', 'a', 'm'), ('g', 'e', 'm', 'a'), ('g', 'm', 'a', 'e'), ('g', 'm', 'e', 'a'), ('a', 'g', 'e', 'm'), ('a', 'g', 'm', 'e'), ('a', 'e', 'g', 'm'), ('a', 'e', 'm', 'g'), ('a', 'm', 'g', 'e'), ('a', 'm', 'e', 'g'), ('e', 'g', 'a', 'm'), ('e', 'g', 'm', 'a'), ('e', 'a', 'g', 'm'), ('e', 'a', 'm', 'g'), ('e', 'm', 'g', 'a'), ('e', 'm', 'a', 'g'), ('m', 'g', 'a', 'e'), ('m', 'g', 'e', 'a'), ('m', 'a', 'g', 'e'), ('m', 'a', 'e', 'g'), ('m', 'e', 'g', 'a'), ('m', 'e', 'a', 'g'))
 
@@ -295,7 +297,7 @@ class Pokemon:
         pokerus = self.pokerus.to_bytes(1, 'little')
         placeMet = int.to_bytes(254, 1, 'little') #todo: put actual data here
 
-        OTGender = 1 if self.OTGender == 'female' else 0
+        OTGender = genders[self.OTGender]
         ball = 4 #todo: let this be customizable? (not for eggs)
         game = games[self.game]
         levelMet = self.level #todo: make this the old met level?
@@ -778,16 +780,18 @@ def transfer(oldGen2, newGen2, oldGen3, newGen3, oldBoxNums, newBoxNums,
 if __name__ == '__main__':
     import subprocess
     
+    numBoxes = SaveGame.NUMBER_OF_BOXES
+    
     oldCrystal = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Crystal (U) [C][!].sav'
     newCrystal = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Crystal (U) [C][!] Test.sav'
     oldRuby = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Ruby.sav'
     newRuby = 'C:/Users/Sidnoea/Documents/Video Games/POKEBRIDGE TESTING/Pokemon Ruby Test.sav'
     
-    oldBoxNums = tuple(range(1, 15))
-    newBoxNums = tuple(range(1, 15))
+    oldBoxNums = tuple(range(1, numBoxes))
+    newBoxNums = tuple(range(1, numBoxes))
     newGame = 'Ruby'
     language = 'English'
-    gender = 'male'
+    gender = 'Male'
 
     transfer(oldCrystal, newCrystal, oldRuby, newRuby, oldBoxNums, newBoxNums,
              newGame, language, gender)
